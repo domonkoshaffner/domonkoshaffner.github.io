@@ -1,0 +1,35 @@
+---
+import Base from './Base.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import StarField from '../components/StarField.astro';
+import { profile } from '../data/site';
+
+interface Props {
+  title: string;
+  description: string;
+}
+const { title, description } = Astro.props;
+---
+
+<Base title={`${title} — ${profile.name}`} description={description}>
+  <StarField />
+  <Header />
+  <main class="wrap writing" id="top">
+    <div class="reading-column"><slot /></div>
+  </main>
+  <Footer />
+</Base>
+
+<style>
+  .writing { padding-top: clamp(9rem, 18vh, 13rem); min-height: 78svh; }
+  .reading-column { max-width: 760px; margin-inline: auto; }
+  .reading-column :global(h1) {
+    margin-block: 1.2rem 1.5rem;
+    font-size: clamp(1.6rem, 4vw, 2.8rem);
+    text-wrap: balance;
+    overflow-wrap: break-word;
+  }
+  .reading-column :global(.eyebrow) { color: var(--accent); font-size: 0.65rem; }
+  .reading-column :global(.intro) { color: var(--muted); font-size: clamp(1.1rem, 2vw, 1.3rem); max-width: 52ch; }
+</style>

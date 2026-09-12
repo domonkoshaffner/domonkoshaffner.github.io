@@ -1,0 +1,65 @@
+---
+import { experience, labels } from '../data/site';
+---
+
+<ol class="timeline">
+  {experience.map((e) => (
+    <li>
+      <span class="when tnum">{e.dates}</span>
+      <div class="what">
+        {e.focus && <p class="focus small">{e.focus}</p>}
+        <h4>{e.role}</h4>
+        <p class="org">{e.org}</p>
+        {e.summary && <p class="sum">{e.summary}</p>}
+        {e.highlights?.length && (
+          <details>
+            <summary>{labels.selectedWork}<span class="sr-only"> — {e.org}, {e.dates}</span></summary>
+            <ul class="highlights">
+              {e.highlights.map((point) => <li>{point}</li>)}
+            </ul>
+          </details>
+        )}
+      </div>
+    </li>
+  ))}
+</ol>
+
+<style>
+  .timeline > li {
+    display: grid;
+    grid-template-columns: 9.5rem 1fr;
+    gap: 0 1.5rem;
+    padding-block: 1.25rem;
+    border-top: 1px solid var(--hair);
+  }
+  .timeline > li:last-child { border-bottom: 1px solid var(--hair); }
+  .when {
+    font-size: 0.9rem;
+    color: var(--muted);
+    padding-top: 0.2rem;
+  }
+  h4 {
+    margin: 0;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 1.05rem;
+    line-height: 1.35;
+    letter-spacing: 0;
+  }
+  .org { color: var(--muted); margin-top: 0.15rem; }
+  .sum { margin-top: 0.6rem; }
+  .focus { color: var(--accent); margin-bottom: 0.45rem; }
+  details { margin-top: 0.8rem; }
+  summary { width: fit-content; cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+  summary::marker { color: var(--accent); font-size: 0.75em; }
+  summary:hover, details[open] summary { color: var(--ink); }
+  .highlights { margin-top: 0.9rem; padding-left: 1.1rem; list-style: disc; }
+  .highlights li { padding-left: 0.25rem; }
+  .highlights li + li { margin-top: 0.7rem; }
+  .highlights li::marker { color: var(--accent); font-size: 0.7em; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  @media (max-width: 560px) {
+    .timeline > li { grid-template-columns: 1fr; }
+    .when { margin-bottom: 0.3rem; }
+  }
+</style>

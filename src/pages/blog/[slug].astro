@@ -1,0 +1,51 @@
+---
+import type { GetStaticPaths } from 'astro';
+import Writing from '../../layouts/Writing.astro';
+import { blog, profile, publishedPosts, type BlogPost } from '../../data/site';
+
+export const getStaticPaths = (() => publishedPosts.map((post) => ({
+  params: { slug: post.slug },
+  props: { post },
+}))) satisfies GetStaticPaths;
+
+interface Props { post: BlogPost }
+const { post } = Astro.props;
+const date = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+}).format(new Date(`${post.date}T00:00:00Z`));
+---
+
+<Writing title={post.title} description={post.summary}>
+  <article>
+    <a href="/blog/" class="eyebrow display">{blog.back}</a>
+    <h1 class="display">{post.title}</h1>
+    <p class="intro">{post.summary}</p>
+    <p class="byline small muted">{profile.name} <span aria-hidden="true">/</span> <time datetime={post.date}>{date}</time></p>
+    <div class="prose">
+      {post.body.map((block) => {
+        switch (block.type) {
+          case 'paragraph': return <p>{block.text}</p>;
+          case 'heading': return <h2>{block.text}</h2>;
+          case 'quote': return <blockquote><p>{block.text}</p></blockquote>;
+          case 'list': return <ul>{block.items.map((item) => <li>{item}</li>)}</ul>;
+          case 'code': return <pre><code class={block.language ? `language-${block.language}` : undefined}>{block.code}</code></pre>;
+        }
+      })}
+    </div>
+    <p class="back"><a href="/blog/">{blog.back} <span aria-hidden="true">↗</span></a></p>
+  </article>
+</Writing>
+
+<style>
+  .byline { display: flex; gap: 0.7rem; flex-wrap: wrap; margin-top: 1.5rem; }
+  .byline span { color: var(--accent); }
+  .prose { margin-top: 3rem; padding-top: 2.5rem; border-top: 1px solid var(--hair); max-width: var(--measure); overflow-wrap: break-word; }
+  .prose > * + * { margin-top: 1.4rem; }
+  .prose h2 { font-size: 1.5rem; font-weight: 500; line-height: 1.4; margin-top: 2.5rem; }
+  .prose ul { list-style: disc; padding-left: 1.3rem; }
+  .prose li + li { margin-top: 0.55rem; }
+  .prose li::marker { color: var(--accent); }
+  .prose blockquote { margin-inline: 0; padding-left: 1.5rem; border-left: 1px solid var(--accent); color: var(--muted); }
+  .prose pre { padding: 1.25rem; background: var(--frame); border: 1px solid var(--hair); overflow-x: auto; font-size: 0.85rem; }
+  .back { margin-top: 3rem; }
+</style>

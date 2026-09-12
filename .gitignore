@@ -1,0 +1,85 @@
+# build output
+dist/
+# generated types
+.astro/
+
+# dependencies
+node_modules/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+
+# environment variables
+.env
+.env.*
+
+# local credentials and private keys
+.npmrc
+.yarnrc.yml
+*.crt
+*.cer
+*.der
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+
+# temporary exports and editor backups
+*.log
+*.bak
+*.orig
+*~
+
+# macOS-specific files
+.DS_Store
+
+# jetbrains setting folder
+.idea/
+
+# Private local reference material; published assets live in static/.
+/public/
+/.local/
+
+# Local AI agent instructions, settings, memory, and transcripts
+[Aa][Gg][Ee][Nn][Tt][Ss].[Mm][Dd]
+[Aa][Gg][Ee][Nn][Tt][Ss].*.[Mm][Dd]
+[Cc][Ll][Aa][Uu][Dd][Ee].[Mm][Dd]
+[Cc][Ll][Aa][Uu][Dd][Ee].*.[Mm][Dd]
+[Gg][Ee][Mm][Ii][Nn][Ii].[Mm][Dd]
+[Gg][Ee][Mm][Ii][Nn][Ii].*.[Mm][Dd]
+.agent/
+.agents/
+.claude/
+.codex/
+.openai/
+.gemini/
+.cursor/
+.cursorrules
+.cursorignore
+.cursorindexingignore
+.windsurf/
+.windsurfrules
+.clinerules
+.cline/
+.roo/
+.roorules*
+.roomodes
+.kilocode/
+.continue/
+.aider*
+.opencode/
+opencode.json
+opencode.jsonc
+.mcp.json
+mcp.json
+.vscode/mcp.json
+.github/copilot-instructions.md
+.github/agents/
+.github/instructions/
+.github/prompts/
+.github/skills/

@@ -1,0 +1,193 @@
+---
+import Base from '../layouts/Base.astro';
+import Header from '../components/Header.astro';
+import Hero from '../components/Hero.astro';
+import Section from '../components/Section.astro';
+import Timeline from '../components/Timeline.astro';
+import SensorFrame from '../components/SensorFrame.astro';
+import StarField from '../components/StarField.astro';
+import Footer from '../components/Footer.astro';
+import {
+  profile, sections, now, publications, researchAffiliation, researchProfiles, talks, recognition,
+  education, skills, contact, affiliations, labels, projectSection, projects, blog, bookPage,
+} from '../data/site';
+
+const title = Object.fromEntries(sections.map((section) => [section.id, section.title]));
+const shownRecognition = recognition.filter((item) => item.public !== false);
+const shownProjects = projects.filter((project) => project.public === true);
+---
+
+<Base>
+  <StarField />
+  <Header />
+  <main>
+    <Hero />
+
+    <div class="wrap page-body">
+      <div class="sections">
+        <Section id="about" title={title.about}>
+          <div id="now" class="anchor">
+            {now.map((paragraph) => <p>{paragraph}</p>)}
+          </div>
+          <div class="fig"><SensorFrame /></div>
+          <section class="subsection" id="affiliations" aria-labelledby="affiliations-title">
+            <h3 class="sub" id="affiliations-title">{labels.affiliations}</h3>
+            <ul class="stack">
+              {affiliations.map((affiliation) => (
+                <li><p><a href={affiliation.url}>{affiliation.org}</a><span class="muted"> · {affiliation.role}</span></p></li>
+              ))}
+            </ul>
+          </section>
+        </Section>
+
+        <Section id="work" title={title.work}>
+          <section class="subsection" id="experience" aria-labelledby="experience-title">
+            <h3 class="sub" id="experience-title">{labels.experience}</h3>
+            <Timeline />
+          </section>
+          <section class="subsection" id="projects" aria-labelledby="projects-title">
+            <h3 class="sub" id="projects-title">{projectSection.title}</h3>
+            <p>{projectSection.intro}</p>
+            {shownProjects.length ? (
+              <ul class="projects">
+                {shownProjects.map((project) => (
+                  <li>
+                    <h4>{project.title}</h4>
+                    <p class="muted">{project.summary}</p>
+                    {project.url && <p class="small"><a href={project.url}>{projectSection.visit} <span aria-hidden="true">↗</span></a></p>}
+                  </li>
+                ))}
+              </ul>
+            ) : <p class="muted small">{projectSection.empty}</p>}
+          </section>
+          <section class="subsection" id="skills" aria-labelledby="skills-title">
+            <h3 class="sub" id="skills-title">{labels.skills}</h3>
+            <dl class="skills">
+              {skills.map((group) => (
+                <>
+                  <dt class="muted">{group.group}</dt>
+                  <dd>{group.items.join(', ')}</dd>
+                </>
+              ))}
+            </dl>
+          </section>
+        </Section>
+
+        <Section id="background" title={title.background}>
+          <section class="subsection" id="research" aria-labelledby="research-title">
+            <h3 class="sub" id="research-title">{labels.research}</h3>
+            <p class="research-affiliation small muted">
+              <a href={researchAffiliation.url}>{researchAffiliation.org}</a> · {researchAffiliation.role}
+            </p>
+            <ul class="stack">
+              {publications.map((publication) => (
+                <li>
+                  <p class="strong">{publication.url ? <a href={publication.url}>{publication.title}</a> : publication.title}</p>
+                  <p class="muted">{publication.authors}. {publication.venue}, {publication.year}.</p>
+                  {publication.note && <p class="small muted">{publication.note}</p>}
+                </li>
+              ))}
+            </ul>
+            <ul class="links">
+              {researchProfiles.map((profile) => <li><a href={profile.url} rel="me">{profile.title}</a></li>)}
+            </ul>
+          </section>
+          <section class="subsection" id="talks" aria-labelledby="talks-title">
+            <h3 class="sub" id="talks-title">{labels.talks}</h3>
+            <ul class="stack dated">
+              {talks.map((talk) => (
+                <li>
+                  <span class="when tnum muted">{talk.year}</span>
+                  <div>
+                    <p>{talk.title}</p>
+                    <p class="muted">{talk.venue}{talk.note ? `. ${talk.note}.` : ''}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <section class="subsection" id="recognition" aria-labelledby="recognition-title">
+            <h3 class="sub" id="recognition-title">{labels.recognition}</h3>
+            <ul class="stack dated">
+              {shownRecognition.map((item) => (
+                <li>
+                  <span class="when tnum muted">{item.year}</span>
+                  <div>
+                    <p>{item.title}</p>
+                    <p class="muted">{item.org}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <section class="subsection" id="education" aria-labelledby="education-title">
+            <h3 class="sub" id="education-title">{labels.education}</h3>
+            <ul class="stack dated">
+              {education.map((item) => (
+                <li>
+                  <span class="when tnum muted">{item.dates}</span>
+                  <div>
+                    <p>{item.title}</p>
+                    <p class="muted">{item.org}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </Section>
+
+        <Section id="blog" title={title.blog}>
+          <p>{blog.homeDescription}</p>
+          <ul class="links">
+            <li><a href="/blog/">{blog.visit}</a></li>
+          </ul>
+        </Section>
+
+        <Section id="books" title={title.books}>
+          <p>{bookPage.description}</p>
+          <ul class="links">
+            <li><a href="/books/">{bookPage.visit}</a></li>
+          </ul>
+        </Section>
+
+        <Section id="contact" title={title.contact}>
+          <p>{contact}</p>
+          <ul class="links">
+            <li><a href={profile.linkedin} rel="me">{labels.linkedin}</a></li>
+            <li><a href={profile.github} rel="me">{labels.github}</a></li>
+          </ul>
+        </Section>
+      </div>
+    </div>
+  </main>
+  <Footer />
+</Base>
+
+<style>
+  .page-body { padding-top: clamp(4rem, 8vw, 6.5rem); }
+  .sections { max-width: 760px; margin-inline: auto; }
+  .fig { margin-top: 2.5rem; max-width: 420px; }
+  .subsection, .anchor { scroll-margin-top: var(--header-offset); }
+  .subsection + .subsection, .fig + .subsection { margin-top: 3rem; }
+  .sub { font-size: 1.25rem; font-weight: 500; margin: 0 0 1.25rem; }
+  .stack li + li { margin-top: 1.25rem; }
+  .strong { font-weight: 500; }
+  .research-affiliation { margin-bottom: 1.5rem; }
+  .dated li { display: grid; grid-template-columns: 5.5rem 1fr; gap: 0 1rem; }
+  .dated .when { font-size: 0.9rem; padding-top: 0.15rem; }
+  .dated p + p { margin-top: 0.1rem; }
+  .projects { margin-top: 1.5rem; }
+  .projects li { padding-block: 1.5rem; border-top: 1px solid var(--hair); }
+  .projects li:last-child { border-bottom: 1px solid var(--hair); }
+  .projects h4 { margin: 0 0 0.6rem; font-size: 1.1rem; font-weight: 500; }
+  .skills { display: grid; grid-template-columns: 9.5rem 1fr; gap: 0.6rem 1.5rem; }
+  .skills dd { margin: 0; }
+  .links { display: flex; flex-wrap: wrap; gap: 0.5rem 1.75rem; margin-top: 1.25rem; }
+  @media (max-width: 560px) {
+    .skills { grid-template-columns: 1fr; gap: 0.1rem 0; }
+    .skills dd { margin-bottom: 0.7rem; }
+  }
+  @media (max-width: 480px) {
+    .dated li { grid-template-columns: 1fr; }
+  }
+</style>

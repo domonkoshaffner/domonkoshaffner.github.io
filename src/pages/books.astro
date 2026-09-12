@@ -1,0 +1,42 @@
+---
+import Writing from '../layouts/Writing.astro';
+import { bookPage, books } from '../data/site';
+---
+
+<Writing title={bookPage.title} description={bookPage.description}>
+  <p class="eyebrow display">{bookPage.eyebrow}</p>
+  <h1 class="display">{bookPage.title}</h1>
+  <p class="intro">{bookPage.description}</p>
+
+  <ol class="books" role="list">
+    {books.map((book, index) => (
+      <li>
+        <span class="number tnum" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+        <div>
+          <h2><a href={book.url}>{book.title}</a></h2>
+          <p class="authors muted">{book.authors}</p>
+        </div>
+      </li>
+    ))}
+  </ol>
+
+  <p class="back small"><a href="/">{bookPage.home} <span aria-hidden="true">↗</span></a></p>
+</Writing>
+
+<style>
+  .books { margin-top: clamp(3rem, 7vw, 5rem); border-top: 1px solid var(--hair); }
+  .books li {
+    display: grid;
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+    gap: 1.5rem;
+    padding-block: 1.8rem;
+    border-bottom: 1px solid var(--hair);
+  }
+  .number { padding-top: 0.35rem; font-family: var(--display); font-size: 0.7rem; color: var(--accent); }
+  h2 { font-size: clamp(1.1rem, 2vw, 1.35rem); font-weight: 500; line-height: 1.4; text-wrap: pretty; }
+  .authors { margin-top: 0.5rem; font-size: 1rem; }
+  .back { margin-top: 2.5rem; }
+  @media (max-width: 560px) {
+    .books li { grid-template-columns: 2rem minmax(0, 1fr); gap: 0.8rem; padding-block: 1.5rem; }
+  }
+</style>

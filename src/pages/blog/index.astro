@@ -1,0 +1,60 @@
+---
+import Writing from '../../layouts/Writing.astro';
+import { blog, publishedPosts } from '../../data/site';
+const formatDate = (date: string) => new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+}).format(new Date(`${date}T00:00:00Z`));
+---
+
+<Writing title={blog.title} description={blog.description}>
+  <p class="eyebrow display">{blog.eyebrow}</p>
+  <h1 class="display">{blog.title}</h1>
+  <p class="intro">{blog.description}</p>
+  <ul class="topics small muted">
+    {blog.topics.map((topic) => <li>{topic}</li>)}
+  </ul>
+
+  {publishedPosts.length ? (
+    <ol class="posts">
+      {publishedPosts.map((post) => (
+        <li>
+          <time datetime={post.date} class="small muted tnum">{formatDate(post.date)}</time>
+          <div>
+            <h2><a href={`/blog/${post.slug}/`}>{post.title}</a></h2>
+            <p class="muted">{post.summary}</p>
+            <a class="small" href={`/blog/${post.slug}/`}>{blog.read} <span aria-hidden="true">↗</span></a>
+          </div>
+        </li>
+      ))}
+    </ol>
+  ) : (
+    <div class="empty">
+      <span class="empty-mark" aria-hidden="true">01</span>
+      <div>
+        <h2>{blog.emptyTitle}</h2>
+        <p class="muted">{blog.emptyText}</p>
+      </div>
+    </div>
+  )}
+  <p class="back small"><a href="/">{blog.home} <span aria-hidden="true">↗</span></a></p>
+</Writing>
+
+<style>
+  .topics { display: flex; flex-wrap: wrap; gap: 0.4rem 1.35rem; margin-top: 1.7rem; }
+  .topics li + li::before { content: '/'; margin-right: 1.35rem; color: var(--accent); }
+  .posts, .empty { margin-top: clamp(3rem, 7vw, 5rem); border-top: 1px solid var(--hair); }
+  .posts > li { display: grid; grid-template-columns: 8rem 1fr; gap: 1.5rem; padding-block: 2rem; border-bottom: 1px solid var(--hair); }
+  .posts time { padding-top: 0.3rem; }
+  h2 { font-size: 1.35rem; font-weight: 500; line-height: 1.4; }
+  h2 + p { margin-top: 0.65rem; }
+  .posts p { margin-bottom: 1rem; }
+  .empty { display: grid; grid-template-columns: 3.5rem 1fr; gap: 1.5rem; padding-block: 2.5rem; border-bottom: 1px solid var(--hair); }
+  .empty-mark { font-family: var(--display); color: var(--accent); font-size: 1.25rem; }
+  .back { margin-top: 2.5rem; }
+  @media (max-width: 560px) {
+    .posts > li { grid-template-columns: 1fr; gap: 0.6rem; }
+    .empty { grid-template-columns: 1fr; gap: 1rem; }
+    .topics { column-gap: 0.85rem; }
+    .topics li + li::before { margin-right: 0.85rem; }
+  }
+</style>

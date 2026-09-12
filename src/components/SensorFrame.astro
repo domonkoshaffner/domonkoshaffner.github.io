@@ -1,0 +1,229 @@
+---
+/**
+ * fig. 1 — the portrait.
+ * The portrait starts as pure sensor noise and resolves through a
+ * diffusion-style denoising schedule, with a restrained cool grayscale.
+ */
+import Figure from './Figure.astro';
+import { portrait } from '../data/site';
+---
+
+<div class="sensor" data-sensor data-resolved={portrait.resolved} data-step={portrait.step}>
+  <Figure number={1} caption={portrait.caption}>
+    <canvas
+      data-canvas
+      data-src={portrait.src}
+      width={portrait.width}
+      height={portrait.height}
+      role="img"
+      aria-label={portrait.alt}
+      title={portrait.replay}
+    ></canvas>
+    <noscript>
+      <style>[data-canvas] { display: none; }</style>
+      <img src={portrait.src} alt={portrait.alt} width={portrait.width} height={portrait.height} />
+    </noscript>
+    <span slot="meta" class="readout tnum" data-readout aria-live="polite">{portrait.step} 0 / 40</span>
+  </Figure>
+  <div class="controls">
+    <button type="button" class="replay" data-replay>{portrait.replay}</button>
+  </div>
+</div>
+
+<style>
+  .sensor { width: 100%; }
+  [data-canvas] { cursor: pointer; }
+  .readout { white-space: nowrap; }
+  .controls {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-top: 0.55rem;
+    font-size: 0.9rem;
+  }
+  .replay {
+    color: var(--muted);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-decoration-color: var(--accent);
+    text-underline-offset: 0.18em;
+  }
+  .replay:hover { color: var(--accent); }
+</style>
+
+<script>
+  const STEPS = 40;
+  const DURATION = 2400;
+
+  // Electro-optical: near-neutral grayscale with a faint cool cast and lifted blacks.
+  function eo(t: number): [number, number, number] {
+    const v = 0.03 + 0.97 * t;
+    return [v * 0.95, v * 0.975, v];
+  }
+
+  function buildLut(fn: (t: number) => [number, number, number]) {
+    const lut = new Uint8ClampedArray(256 * 3);
+    for (let i = 0; i < 256; i++) {
+      const [r, g, b] = fn(i / 255);
+      lut[i * 3] = r * 255;
+      lut[i * 3 + 1] = g * 255;
+      lut[i * 3 + 2] = b * 255;
+    }
+    return lut;
+  }
+
+  const LUT = buildLut(eo);
+
+  // Deterministic Gaussian field (Box–Muller over a small LCG).
+  function gaussianField(n: number, seed: number) {
+    const a = new Float32Array(n);
+    let s = seed >>> 0;
+    const rnd = () => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return (s + 0.5) / 4294967296;
+    };
+    for (let i = 0; i < n; i += 2) {
+      const u = rnd();
+      const v = rnd();
+      const r = Math.sqrt(-2 * Math.log(u));
+      a[i] = r * Math.cos(6.283185307 * v);
+      if (i + 1 < n) a[i + 1] = r * Math.sin(6.283185307 * v);
+    }
+    return a;
+  }
+
+  function luminanceOf(ctx: CanvasRenderingContext2D, w: number, h: number) {
+    const d = ctx.getImageData(0, 0, w, h).data;
+    const L = new Float32Array(w * h);
+    for (let i = 0, p = 0; i < L.length; i++, p += 4) {
+      L[i] = (0.2126 * d[p] + 0.7152 * d[p + 1] + 0.0722 * d[p + 2]) / 255;
+    }
+    return L;
+  }
+
+  class Sensor {
+    root: HTMLElement;
+    canvas: HTMLCanvasElement;
+    readout: HTMLElement | null;
+    ctx: CanvasRenderingContext2D;
+    w: number;
+    h: number;
+    reduced: boolean;
+    raf = 0;
+    ready = false;
+    L!: Float32Array;
+    Lb!: Float32Array;
+    noise!: Float32Array[];
+    frame!: ImageData;
+
+    constructor(root: HTMLElement) {
+      this.root = root;
+      this.canvas = root.querySelector('[data-canvas]') as HTMLCanvasElement;
+      this.readout = root.querySelector('[data-readout]');
+      this.ctx = this.canvas.getContext('2d') as CanvasRenderingContext2D;
+      this.w = this.canvas.width;
+      this.h = this.canvas.height;
+      this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+
+    async init() {
+      const img = new Image();
+      img.src = this.canvas.dataset.src ?? '';
+      try {
+        await img.decode();
+      } catch {
+        return;
+      }
+
+      const work = document.createElement('canvas');
+      work.width = this.w;
+      work.height = this.h;
+      const wctx = work.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
+
+      // Full-resolution luminance, with a touch more contrast.
+      wctx.drawImage(img, 0, 0, this.w, this.h);
+      const L = luminanceOf(wctx, this.w, this.h);
+      for (let i = 0; i < L.length; i++) {
+        const v = (L[i] - 0.5) * 1.12 + 0.5;
+        L[i] = v < 0 ? 0 : v > 1 ? 1 : v;
+      }
+
+      // Coarse structure: downsample hard, upsample smooth. Early steps show only this.
+      const tiny = document.createElement('canvas');
+      tiny.width = Math.max(2, Math.round(this.w / 14));
+      tiny.height = Math.max(2, Math.round(this.h / 14));
+      (tiny.getContext('2d') as CanvasRenderingContext2D).drawImage(img, 0, 0, tiny.width, tiny.height);
+      wctx.imageSmoothingEnabled = true;
+      wctx.imageSmoothingQuality = 'high';
+      wctx.drawImage(tiny, 0, 0, this.w, this.h);
+      const Lb = luminanceOf(wctx, this.w, this.h);
+
+      this.L = L;
+      this.Lb = Lb;
+      this.noise = [gaussianField(L.length, 1), gaussianField(L.length, 2), gaussianField(L.length, 3)];
+      this.frame = this.ctx.createImageData(this.w, this.h);
+      this.ready = true;
+
+      if (this.reduced) {
+        this.render(1);
+        this.done();
+      } else {
+        this.play();
+      }
+    }
+
+    // Denoising schedule: coarse structure first, detail later, noise decaying.
+    schedule(t: number): [number, number] {
+      const e = t * t * (3 - 2 * t);
+      const mix = Math.min(1, e * 1.15);
+      const sigma = 1.1 * Math.pow(1 - t, 1.8) + 0.025; // 0.025 = residual sensor grain
+      return [mix, sigma];
+    }
+
+    render(t: number, step = STEPS) {
+      if (!this.ready) return;
+      const [mix, sigma] = this.schedule(t);
+      const N = this.noise[step % this.noise.length];
+      const L = this.L;
+      const Lb = this.Lb;
+      const d = this.frame.data;
+      const lut = LUT;
+      for (let i = 0, p = 0; i < L.length; i++, p += 4) {
+        let v = Lb[i] + (L[i] - Lb[i]) * mix + sigma * N[i];
+        v = v < 0 ? 0 : v > 1 ? 1 : v;
+        const k = ((v * 255) | 0) * 3;
+        d[p] = lut[k];
+        d[p + 1] = lut[k + 1];
+        d[p + 2] = lut[k + 2];
+        d[p + 3] = 255;
+      }
+      this.ctx.putImageData(this.frame, 0, 0);
+    }
+
+    play() {
+      cancelAnimationFrame(this.raf);
+      const start = performance.now();
+      const tick = (now: number) => {
+        const t = Math.min(1, (now - start) / DURATION);
+        const step = t >= 1 ? STEPS : Math.min(STEPS, Math.floor(t * STEPS) + 1);
+        this.render(t, step);
+        if (this.readout) this.readout.textContent = `${this.root.dataset.step} ${step} / ${STEPS}`;
+        if (t < 1) this.raf = requestAnimationFrame(tick);
+        else this.done();
+      };
+      this.raf = requestAnimationFrame(tick);
+    }
+
+    done() {
+      if (this.readout) this.readout.textContent = this.root.dataset.resolved ?? '';
+    }
+
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-sensor]')) {
+    const sensor = new Sensor(root);
+    root.querySelector('[data-replay]')?.addEventListener('click', () => sensor.ready && sensor.play());
+    sensor.canvas.addEventListener('click', () => sensor.ready && sensor.play());
+    sensor.init();
+  }
+</script>

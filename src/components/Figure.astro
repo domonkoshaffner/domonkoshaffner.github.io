@@ -1,0 +1,71 @@
+---
+/**
+ * Instrument frame: every figure on the site sits in one of these.
+ * Lifted dark ground, hairline edge, reticle ticks in the corners,
+ * a numbered caption beneath.
+ */
+interface Props {
+  number: number;
+  caption: string;
+  class?: string;
+}
+
+const { number, caption, class: className } = Astro.props;
+---
+
+<figure class:list={['fig', className]}>
+  <div class="fig-frame">
+    <slot />
+    <span class="ticks" aria-hidden="true"></span>
+  </div>
+  <figcaption>
+    <span class="fig-text"><span class="fig-n">fig. {number}</span> {caption}</span>
+    <slot name="meta" />
+  </figcaption>
+</figure>
+
+<style>
+  .fig { margin: 0; }
+  .fig-frame {
+    position: relative;
+    background: var(--frame);
+    border: 1px solid var(--hair);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .fig-frame > :global(canvas),
+  .fig-frame > :global(svg),
+  .fig-frame > :global(img) {
+    width: 100%;
+    height: auto;
+  }
+  .ticks {
+    position: absolute;
+    inset: 10px;
+    pointer-events: none;
+    background:
+      linear-gradient(var(--tick), var(--tick)) top left / 14px 1px,
+      linear-gradient(var(--tick), var(--tick)) top left / 1px 14px,
+      linear-gradient(var(--tick), var(--tick)) top right / 14px 1px,
+      linear-gradient(var(--tick), var(--tick)) top right / 1px 14px,
+      linear-gradient(var(--tick), var(--tick)) bottom left / 14px 1px,
+      linear-gradient(var(--tick), var(--tick)) bottom left / 1px 14px,
+      linear-gradient(var(--tick), var(--tick)) bottom right / 14px 1px,
+      linear-gradient(var(--tick), var(--tick)) bottom right / 1px 14px;
+    background-repeat: no-repeat;
+  }
+  figcaption {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    margin-top: 0.7rem;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+  .fig-n {
+    color: var(--accent);
+    margin-right: 0.15em;
+  }
+</style>

@@ -1,0 +1,85 @@
+---
+import BlackHole from './BlackHole.astro';
+import { profile } from '../data/site';
+---
+
+<section class="hero" id="top">
+  <BlackHole />
+  <div class="hero-scrim" aria-hidden="true"></div>
+  <div class="hero-content wrap">
+    <p class="eyebrow display">{profile.role}</p>
+    <h1 class="display">{profile.name}</h1>
+    <p class="lede">{profile.headline}</p>
+  </div>
+  <div class="hero-controls wrap">
+    <button type="button" class="pill" data-bh-toggle aria-pressed="false" hidden>Pause</button>
+  </div>
+</section>
+
+<style>
+  .hero {
+    position: relative;
+    min-height: max(680px, 100svh);
+    display: grid;
+    align-items: end;
+    isolation: isolate;
+  }
+  .hero-scrim {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(to top, var(--space) 0%, rgba(5, 7, 13, 0.42) 16%, transparent 35%);
+  }
+  .hero-content {
+    position: relative;
+    width: 100%;
+    padding-bottom: clamp(5rem, 14vh, 9rem);
+  }
+  .eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    font-size: 0.7rem;
+    color: var(--accent);
+  }
+  .eyebrow::before {
+    content: '';
+    width: 1.6rem;
+    height: 1px;
+    background: var(--accent);
+  }
+  h1 {
+    margin-top: 1.1rem;
+    font-size: clamp(2rem, 4.1vw, 3.65rem);
+    letter-spacing: 0.06em;
+    line-height: 1.08;
+    text-wrap: balance;
+    max-width: 11ch;
+  }
+  .lede {
+    margin-top: 1.4rem;
+    max-width: 37ch;
+    font-size: clamp(1rem, 1.3vw, 1.2rem);
+    line-height: 1.55;
+    color: var(--muted);
+  }
+  .hero-controls {
+    position: absolute;
+    right: 0;
+    bottom: clamp(1.5rem, 4vh, 2.75rem);
+    left: 0;
+    display: flex;
+    justify-content: flex-end;
+    pointer-events: none;
+  }
+  .hero-controls > * { pointer-events: auto; }
+  @media (max-width: 860px) {
+    .eyebrow { font-size: 0.6rem; letter-spacing: 0.1em; }
+    .hero-content { padding-bottom: 6rem; }
+    .hero-controls { justify-content: flex-start; bottom: 1.5rem; }
+    h1 { font-size: clamp(1.65rem, 8vw, 3.2rem); }
+  }
+  @media (min-width: 560px) and (max-width: 860px) {
+    .hero { min-height: max(820px, 100svh); }
+  }
+</style>

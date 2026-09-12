@@ -1,0 +1,146 @@
+---
+import { navigation, profile, labels } from '../data/site';
+const isHome = Astro.url.pathname === '/';
+---
+
+<header class="site-header" data-site-header>
+  <div class="wrap bar">
+    <a class="brand display" href={isHome ? '#top' : '/#top'} aria-label={profile.name}>DH</a>
+    <button class="menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-navigation" hidden>
+      {labels.menu}<span aria-hidden="true">+</span>
+    </button>
+    <nav id="site-navigation" aria-label="Primary">
+      {navigation.map((s) => (
+        <a
+          href={isHome && s.href.startsWith('/#') ? s.href.slice(1) : s.href}
+          aria-current={Astro.url.pathname.startsWith(s.href) ? 'page' : undefined}
+          data-nav-section={isHome ? s.section : undefined}
+        >{s.title}</a>
+      ))}
+    </nav>
+  </div>
+</header>
+
+<style>
+  .site-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    background: rgba(5, 7, 13, 0.92);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--hair);
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding-block: 1.15rem;
+  }
+  .brand {
+    font-size: 0.8rem;
+    text-decoration: none;
+    color: var(--ink);
+  }
+  .brand:hover { color: var(--accent); }
+  nav {
+    display: flex;
+    gap: 1.6rem;
+    font-size: 0.95rem;
+  }
+  nav a {
+    color: var(--muted);
+    text-decoration: none;
+  }
+  nav a:hover { color: var(--ink); }
+  nav a[aria-current] { color: var(--accent); }
+  .menu-toggle { display: none; }
+  @media (max-width: 720px) {
+    .bar { flex-wrap: wrap; gap: 0.9rem 1rem; }
+    .menu-toggle:not([hidden]) {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      min-height: 2rem;
+      font-family: var(--display);
+      font-size: 0.6rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .menu-toggle span { color: var(--accent); font: 400 1.3rem/1 var(--sans); }
+    nav { width: 100%; flex-wrap: wrap; gap: 0.55rem 1.15rem; font-size: 0.9rem; }
+    .site-header[data-enhanced] nav { display: none; }
+    .site-header[data-enhanced] nav[data-open] {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      padding-block: 0.3rem 0.5rem;
+      border-top: 1px solid var(--hair);
+    }
+    .site-header[data-enhanced] nav a { padding-block: 0.7rem; font-size: 1rem; }
+  }
+</style>
+
+<script>
+  const header = document.querySelector<HTMLElement>('[data-site-header]');
+  const toggle = header?.querySelector<HTMLButtonElement>('[data-menu-toggle]');
+  const nav = header?.querySelector<HTMLElement>('#site-navigation');
+
+  if (header && toggle && nav) {
+    header.dataset.enhanced = '';
+    toggle.hidden = false;
+
+    const setOpen = (open: boolean) => {
+      toggle.setAttribute('aria-expanded', String(open));
+      nav.toggleAttribute('data-open', open);
+      const symbol = toggle.querySelector('span');
+      if (symbol) symbol.textContent = open ? '−' : '+';
+    };
+    toggle.addEventListener('click', () => setOpen(toggle.getAttribute('aria-expanded') !== 'true'));
+    nav.addEventListener('click', (event) => {
+      if ((event.target as HTMLElement).closest('a')) setOpen(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && toggle.getAttribute('aria-expanded') === 'true') {
+        setOpen(false);
+        toggle.focus();
+      }
+    });
+    document.addEventListener('click', (event) => {
+      if (!header.contains(event.target as Node)) setOpen(false);
+    });
+    matchMedia('(max-width: 720px)').addEventListener('change', () => setOpen(false));
+
+    const links = Array.from(nav.querySelectorAll<HTMLAnchorElement>('[data-nav-section]'));
+    const sections = links.map((link) => document.getElementById(link.dataset.navSection ?? ''))
+      .filter((section): section is HTMLElement => section !== null);
+    let queued = false;
+    const update = () => {
+      queued = false;
+      let active: HTMLElement | undefined;
+      const line = Math.min(innerHeight * 0.3, 180);
+      for (const section of sections) {
+        if (section.getBoundingClientRect().top <= line) active = section;
+      }
+      if (scrollY + innerHeight >= document.documentElement.scrollHeight - 2) {
+        active = sections.at(-1);
+      }
+      for (const link of links) {
+        if (link.dataset.navSection === active?.id) link.setAttribute('aria-current', 'location');
+        else link.removeAttribute('aria-current');
+      }
+    };
+    const queueUpdate = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(update);
+    };
+    if (links.length) {
+      addEventListener('scroll', queueUpdate, { passive: true });
+      addEventListener('resize', queueUpdate);
+      update();
+    }
+  }
+</script>
