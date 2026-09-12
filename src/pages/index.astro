@@ -34,7 +34,7 @@ const shownProjects = projects.filter((project) => project.public === true);
             <h3 class="sub" id="affiliations-title">{labels.affiliations}</h3>
             <ul class="stack">
               {affiliations.map((affiliation) => (
-                <li><p><a href={affiliation.url}>{affiliation.org}</a><span class="muted"> · {affiliation.role}</span></p></li>
+                <li><p><a href={affiliation.url} target="_blank" rel="noopener noreferrer">{affiliation.org}</a><span class="muted"> · {affiliation.role}</span></p></li>
               ))}
             </ul>
           </section>
@@ -54,7 +54,7 @@ const shownProjects = projects.filter((project) => project.public === true);
                   <li>
                     <h4>{project.title}</h4>
                     <p class="muted">{project.summary}</p>
-                    {project.url && <p class="small"><a href={project.url}>{projectSection.visit} <span aria-hidden="true">↗</span></a></p>}
+                    {project.url && <p class="small"><a href={project.url} target={/^https?:\/\//.test(project.url) ? "_blank" : undefined} rel="noopener noreferrer">{projectSection.visit} <span aria-hidden="true">↗</span></a></p>}
                   </li>
                 ))}
               </ul>
@@ -77,19 +77,19 @@ const shownProjects = projects.filter((project) => project.public === true);
           <section class="subsection" id="research" aria-labelledby="research-title">
             <h3 class="sub" id="research-title">{labels.research}</h3>
             <p class="research-affiliation small muted">
-              <a href={researchAffiliation.url}>{researchAffiliation.org}</a> · {researchAffiliation.role}
+              <a href={researchAffiliation.url} target="_blank" rel="noopener noreferrer">{researchAffiliation.org}</a> · {researchAffiliation.role}
             </p>
             <ul class="stack">
               {publications.map((publication) => (
                 <li>
-                  <p class="strong">{publication.url ? <a href={publication.url}>{publication.title}</a> : publication.title}</p>
+                  <p class="strong">{publication.url ? <a href={publication.url} target="_blank" rel="noopener noreferrer">{publication.title}</a> : publication.title}</p>
                   <p class="muted">{publication.authors}. {publication.venue}, {publication.year}.</p>
                   {publication.note && <p class="small muted">{publication.note}</p>}
                 </li>
               ))}
             </ul>
             <ul class="links">
-              {researchProfiles.map((profile) => <li><a href={profile.url} rel="me">{profile.title}</a></li>)}
+              {researchProfiles.map((profile) => <li><a href={profile.url} target="_blank" rel="me noopener noreferrer">{profile.title}</a></li>)}
             </ul>
           </section>
           <section class="subsection" id="talks" aria-labelledby="talks-title">
@@ -153,8 +153,8 @@ const shownProjects = projects.filter((project) => project.public === true);
         <Section id="contact" title={title.contact}>
           <p>{contact}</p>
           <ul class="links">
-            <li><a href={profile.linkedin} rel="me">{labels.linkedin}</a></li>
-            <li><a href={profile.github} rel="me">{labels.github}</a></li>
+            <li><a href={profile.linkedin} target="_blank" rel="me noopener noreferrer">{labels.linkedin}</a></li>
+            <li><a href={profile.github} target="_blank" rel="me noopener noreferrer">{labels.github}</a></li>
           </ul>
         </Section>
       </div>

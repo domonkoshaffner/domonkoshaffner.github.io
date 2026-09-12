@@ -1,8 +1,8 @@
 ---
 /**
  * fig. 1 — the portrait.
- * The portrait starts as pure sensor noise and resolves through a
- * diffusion-style denoising schedule, with a restrained cool grayscale.
+ * A normal image is always available. A canvas enhances it with a
+ * diffusion-style denoising schedule when the browser supports it.
  */
 import Figure from './Figure.astro';
 import { portrait } from '../data/site';
@@ -10,29 +10,34 @@ import { portrait } from '../data/site';
 
 <div class="sensor" data-sensor data-resolved={portrait.resolved} data-step={portrait.step}>
   <Figure number={1} caption={portrait.caption}>
-    <canvas
-      data-canvas
-      data-src={portrait.src}
+    <img
+      data-portrait
+      src={portrait.src}
+      alt={portrait.alt}
       width={portrait.width}
       height={portrait.height}
-      role="img"
-      aria-label={portrait.alt}
+      decoding="async"
+    />
+    <canvas
+      data-canvas
+      width={portrait.width}
+      height={portrait.height}
+      aria-hidden="true"
       title={portrait.replay}
+      hidden
     ></canvas>
-    <noscript>
-      <style>[data-canvas] { display: none; }</style>
-      <img src={portrait.src} alt={portrait.alt} width={portrait.width} height={portrait.height} />
-    </noscript>
-    <span slot="meta" class="readout tnum" data-readout aria-live="polite">{portrait.step} 0 / 40</span>
+    <span slot="meta" class="readout tnum" data-readout aria-live="polite">{portrait.resolved}</span>
   </Figure>
   <div class="controls">
-    <button type="button" class="replay" data-replay>{portrait.replay}</button>
+    <button type="button" class="replay" data-replay hidden>{portrait.replay}</button>
   </div>
 </div>
 
 <style>
   .sensor { width: 100%; }
-  [data-canvas] { cursor: pointer; }
+  [data-portrait] { filter: grayscale(1) contrast(1.12); }
+  [data-canvas] { position: absolute; inset: 0; cursor: pointer; }
+  [data-canvas][hidden], [data-replay][hidden] { display: none; }
   .readout { white-space: nowrap; }
   .controls {
     display: flex;
@@ -105,7 +110,8 @@ import { portrait } from '../data/site';
     root: HTMLElement;
     canvas: HTMLCanvasElement;
     readout: HTMLElement | null;
-    ctx: CanvasRenderingContext2D;
+    replay: HTMLButtonElement | null;
+    ctx: CanvasRenderingContext2D | null = null;
     w: number;
     h: number;
     reduced: boolean;
@@ -120,25 +126,50 @@ import { portrait } from '../data/site';
       this.root = root;
       this.canvas = root.querySelector('[data-canvas]') as HTMLCanvasElement;
       this.readout = root.querySelector('[data-readout]');
-      this.ctx = this.canvas.getContext('2d') as CanvasRenderingContext2D;
+      this.replay = root.querySelector('[data-replay]');
       this.w = this.canvas.width;
       this.h = this.canvas.height;
       this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     }
 
     async init() {
-      const img = new Image();
-      img.src = this.canvas.dataset.src ?? '';
       try {
-        await img.decode();
+        await this.prepare();
       } catch {
-        return;
+        // Canvas can be unavailable or pixel reads blocked by privacy settings.
+        // The normal image remains usable even if enhancement fails.
+        this.fallback();
       }
+    }
+
+    async prepare() {
+      const img = this.root.querySelector<HTMLImageElement>('[data-portrait]');
+      if (!img) return;
+      if (!img.complete) {
+        await new Promise<void>((resolve, reject) => {
+          const cleanup = () => {
+            img.removeEventListener('load', loaded);
+            img.removeEventListener('error', failed);
+          };
+          const loaded = () => { cleanup(); resolve(); };
+          const failed = () => { cleanup(); reject(new Error('Portrait image unavailable')); };
+          img.addEventListener('load', loaded, { once: true });
+          img.addEventListener('error', failed, { once: true });
+        });
+      }
+      if (!img.naturalWidth) throw new Error('Portrait image unavailable');
+
+      // Use the loaded HTML image; a separate Image.decode() promise can reject
+      // or be unsupported even when the browser can display the image normally.
+      const ctx = this.canvas.getContext('2d');
+      if (!ctx) throw new Error('Portrait canvas unavailable');
+      this.ctx = ctx;
 
       const work = document.createElement('canvas');
       work.width = this.w;
       work.height = this.h;
-      const wctx = work.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
+      const wctx = work.getContext('2d', { willReadFrequently: true });
+      if (!wctx) throw new Error('Portrait processing unavailable');
 
       // Full-resolution luminance, with a touch more contrast.
       wctx.drawImage(img, 0, 0, this.w, this.h);
@@ -152,7 +183,9 @@ import { portrait } from '../data/site';
       const tiny = document.createElement('canvas');
       tiny.width = Math.max(2, Math.round(this.w / 14));
       tiny.height = Math.max(2, Math.round(this.h / 14));
-      (tiny.getContext('2d') as CanvasRenderingContext2D).drawImage(img, 0, 0, tiny.width, tiny.height);
+      const tctx = tiny.getContext('2d');
+      if (!tctx) throw new Error('Portrait processing unavailable');
+      tctx.drawImage(img, 0, 0, tiny.width, tiny.height);
       wctx.imageSmoothingEnabled = true;
       wctx.imageSmoothingQuality = 'high';
       wctx.drawImage(tiny, 0, 0, this.w, this.h);
@@ -161,8 +194,9 @@ import { portrait } from '../data/site';
       this.L = L;
       this.Lb = Lb;
       this.noise = [gaussianField(L.length, 1), gaussianField(L.length, 2), gaussianField(L.length, 3)];
-      this.frame = this.ctx.createImageData(this.w, this.h);
+      this.frame = ctx.createImageData(this.w, this.h);
       this.ready = true;
+      if (this.replay) this.replay.hidden = false;
 
       if (this.reduced) {
         this.render(1);
@@ -181,7 +215,7 @@ import { portrait } from '../data/site';
     }
 
     render(t: number, step = STEPS) {
-      if (!this.ready) return;
+      if (!this.ready || !this.ctx) return;
       const [mix, sigma] = this.schedule(t);
       const N = this.noise[step % this.noise.length];
       const L = this.L;
@@ -198,20 +232,36 @@ import { portrait } from '../data/site';
         d[p + 3] = 255;
       }
       this.ctx.putImageData(this.frame, 0, 0);
+      // Never cover the HTML image until a complete frame has been drawn.
+      this.canvas.hidden = false;
     }
 
     play() {
+      if (!this.ready) return;
       cancelAnimationFrame(this.raf);
       const start = performance.now();
       const tick = (now: number) => {
-        const t = Math.min(1, (now - start) / DURATION);
-        const step = t >= 1 ? STEPS : Math.min(STEPS, Math.floor(t * STEPS) + 1);
-        this.render(t, step);
-        if (this.readout) this.readout.textContent = `${this.root.dataset.step} ${step} / ${STEPS}`;
-        if (t < 1) this.raf = requestAnimationFrame(tick);
-        else this.done();
+        if (!this.ready) return;
+        try {
+          const t = Math.min(1, (now - start) / DURATION);
+          const step = t >= 1 ? STEPS : Math.min(STEPS, Math.floor(t * STEPS) + 1);
+          this.render(t, step);
+          if (this.readout) this.readout.textContent = `${this.root.dataset.step} ${step} / ${STEPS}`;
+          if (t < 1) this.raf = requestAnimationFrame(tick);
+          else this.done();
+        } catch {
+          this.fallback();
+        }
       };
-      this.raf = requestAnimationFrame(tick);
+      tick(start);
+    }
+
+    fallback() {
+      cancelAnimationFrame(this.raf);
+      this.ready = false;
+      this.canvas.hidden = true;
+      if (this.replay) this.replay.hidden = true;
+      this.done();
     }
 
     done() {
@@ -224,6 +274,7 @@ import { portrait } from '../data/site';
     const sensor = new Sensor(root);
     root.querySelector('[data-replay]')?.addEventListener('click', () => sensor.ready && sensor.play());
     sensor.canvas.addEventListener('click', () => sensor.ready && sensor.play());
-    sensor.init();
+    sensor.canvas.addEventListener('contextlost', () => sensor.fallback());
+    void sensor.init();
   }
 </script>
