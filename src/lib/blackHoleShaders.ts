@@ -227,17 +227,46 @@ ${common}
   uniform sampler2D uPlasma;
   out vec4 color;
 
+  vec2 flowCoordinates(float r, float phi, float age, float angularVelocity) {
+    // Differential rotation: the hot inner flow overtakes the outer disk.
+    // A shared rotation carries the whole pattern; only the shear has a finite
+    // lifetime, preventing ever-tighter spirals and eventual texture aliasing.
+    float angle = phi - 0.24 * uTime - (angularVelocity - 0.24) * age;
+    // Broad, gentle eddies deform the material in its moving reference frame.
+    // Integer angular frequencies keep both sides of the atan seam identical.
+    float bend = 0.025 * sin(3.0 * angle + 1.4 * r + 0.12 * uTime)
+      + 0.012 * sin(7.0 * angle - 0.8 * r - 0.085 * uTime);
+    float ripple = 0.065 * sin(2.0 * angle + 1.8 * r - 0.095 * uTime)
+      + 0.030 * sin(5.0 * angle - 1.1 * r + 0.14 * uTime);
+    return vec2((angle + bend) / TAU + log(r) * 7.0 / 24.0,
+                ((r + ripple) * 6.4 + 0.22 * uTime) / 80.0);
+  }
+
   vec3 emission(vec4 packedHit, float dop, float weight) {
     float r = unpack16(packedHit.rg) * R_OUT;
     float phi = unpack16(packedHit.ba) * TAU - PI;
-    // Preserve the same rotation and inward flow at every rendering resolution.
-    vec2 st = vec2((phi - 0.24 * uTime) / TAU + log(max(r, R_IN)) * 7.0 / 24.0,
-                   (r * 6.4 + 0.22 * uTime) / 80.0);
-    vec2 dx = dFdx(st), dy = dFdy(st);
-    // Crossing atan's angular seam is periodic, not a giant texture footprint.
-    dx.x -= round(dx.x); dy.x -= round(dy.x);
+    float flowRadius = max(r, R_IN);
+    float angularVelocity = 0.045 + 0.32 * pow(R_IN / flowRadius, 1.35);
+    // Two staggered flows renew only while their contribution is zero. Their
+    // smooth handover lets strands form and dissolve without a visible reset.
+    float phaseA = fract((uTime - 18.0) / 24.0);
+    float phaseB = fract(phaseA + 0.5);
+    float blend = smoothstep(0.0, 1.0, 0.5 - 0.5 * cos(TAU * phaseA));
+    vec2 stA = flowCoordinates(flowRadius, phi, phaseA * 24.0, angularVelocity);
+    vec2 stB = flowCoordinates(flowRadius, phi, phaseB * 24.0, angularVelocity);
+    vec2 dxA = dFdx(stA), dyA = dFdy(stA);
+    vec2 dxB = dFdx(stB), dyB = dFdy(stB);
+    // Keep derivatives outside the branch, and unwrap the periodic angular
+    // seam, so mip filtering remains stable at the shadow and disk boundaries.
+    dxA.x -= round(dxA.x); dyA.x -= round(dyA.x);
+    dxB.x -= round(dxB.x); dyB.x -= round(dyB.x);
     if (r <= R_IN || weight < 0.001) return vec3(0.0);
-    vec3 field = textureGrad(uPlasma, st, dx, dy).rgb;
+    vec3 a = textureGrad(uPlasma, stA, dxA, dyA).rgb;
+    vec3 b = textureGrad(uPlasma, stB, dxB, dyB).rgb;
+    vec3 field = mix(b, a, blend);
+    // The atlas stores square-root energy. Blend in linear light so a handover
+    // does not dim the entire disk halfway through its cycle.
+    field.g = sqrt(mix(b.g * b.g, a.g * a.g, blend));
     float edgeIn = smoothstep(R_IN, R_IN + 0.25, r);
     float edgeOut = 1.0 - smoothstep(R_OUT - 3.5, R_OUT, r + (field.r - 0.5) * 0.8);
     float profile = edgeIn * edgeOut * pow(R_IN / r, 1.1);
