@@ -17,6 +17,10 @@ export const profile = {
   github: 'https://github.com/domonkoshaffner',
 };
 
+export const blackHole = {
+  note: 'An artistic interpretation of a black hole. The photon ring, accretion flow, and stellar motion are simplified for visual effect and are not a physically exact simulation.',
+};
+
 export const sections = [
   { id: 'about', title: 'About', href: '/#about' },
   { id: 'work', title: 'Work', href: '/#work' },
