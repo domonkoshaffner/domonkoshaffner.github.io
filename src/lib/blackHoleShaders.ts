@@ -181,6 +181,52 @@ ${common}
   }
 `;
 
+// Reconstruct the compressed stellar images in the strong-lensing collar.
+// This runs only when geometry changes, never during animation. The sky has
+// already followed the curved rays; this small tangential footprint keeps
+// subpixel images from reading as isolated hard dots. It is an artistic optical
+// filter, not a second deflection of the light paths.
+export const skyFilterShader = `#version 300 es
+${common}
+  uniform sampler2D uSource;
+  out vec4 color;
+  vec3 linearSky(ivec2 p) {
+    vec3 encoded = texelFetch(uSource, clamp(p, ivec2(0), ivec2(uRes) - 1), 0).rgb;
+    return encoded * encoded * 4.0;
+  }
+  vec3 skyAt(vec2 p) {
+    vec2 q = p - 0.5;
+    ivec2 i = ivec2(floor(q));
+    vec2 f = fract(q);
+    return mix(mix(linearSky(i), linearSky(i + ivec2(1, 0)), f.x),
+      mix(linearSky(i + ivec2(0, 1)), linearSky(i + ivec2(1)), f.x), f.y);
+  }
+  void main() {
+    vec4 original = texelFetch(uSource, ivec2(gl_FragCoord.xy), 0);
+    vec2 center = (uRes + uCenter * uRes.y) * 0.5;
+    vec2 offset = gl_FragCoord.xy - center;
+    float radius = uRes.y * 0.5 * uZoom * B_CRIT / sqrt(D * D - B_CRIT * B_CRIT);
+    float distance = length(offset) / radius;
+    float amount = smoothstep(1.015, 1.055, distance)
+      * (1.0 - smoothstep(1.22, 1.55, distance));
+    if (amount <= 0.0) { color = original; return; }
+    vec3 light = vec3(0.0);
+    float total = 0.0;
+    for (int i = -12; i <= 12; i++) {
+      float x = float(i) * 0.25;
+      float angle = x * 0.025;
+      float c = cos(angle), s = sin(angle);
+      vec2 bent = vec2(c * offset.x - s * offset.y, s * offset.x + c * offset.y);
+      float weight = exp(-0.5 * x * x);
+      light += skyAt(center + bent) * weight;
+      total += weight;
+    }
+    vec3 unfiltered = original.rgb * original.rgb * 4.0;
+    light = mix(unfiltered, light / total, amount);
+    color = vec4(sqrt(clamp(light * 0.25, 0.0, 1.0)), original.a);
+  }
+`;
+
 // A 2048², seamlessly periodic atlas with mipmaps: turbulence is generated once,
 // then advected coherently. Filtering prevents subpixel filaments from sparkling.
 export const materialShader = `#version 300 es
@@ -386,9 +432,10 @@ ${bloomEncoding}
     vec4 second = texelFetch(uSecond, pixel, 0);
     vec4 tr = texelFetch(uTransport, pixel, 0);
     vec3 sky = texelFetch(uBackground, pixel, 0).rgb;
-    vec3 col = sky * sky * 4.0
-      + emission(first, tr.g * 2.0 - 1.0, tr.r)
+    vec3 diskEmission = emission(first, tr.g * 2.0 - 1.0, tr.r)
       + emission(second, tr.a * 2.0 - 1.0, tr.b);
+    vec3 skyLight = sky * sky * 4.0;
+    vec3 col = skyLight + diskEmission;
 
     vec2 uv = (gl_FragCoord.xy * 2.0 - uRes) / uRes.y - uCenter;
     float px = 2.0 / uRes.y;
@@ -397,6 +444,14 @@ ${bloomEncoding}
     float outside = smoothstep(-0.5 * px, 0.5 * px, distanceToShadow);
     float distanceFromEdge = max(0.0, distanceToShadow);
     col *= smoothstep(radius * 0.08, radius * 0.20, distanceFromEdge);
+    // Reveal the inverted disk image along the existing curved light paths.
+    // It sits outside the shadow: the narrow collar is not a glowing interior.
+    // Reusing the material coordinates keeps its motion tied to the actual disk.
+    float lensWindow = smoothstep(radius * 0.03, radius * 0.055, distanceFromEdge)
+      * (1.0 - smoothstep(radius * 0.13, radius * 0.20, distanceFromEdge));
+    float echoLuminance = dot(diskEmission, vec3(0.2126, 0.7152, 0.0722));
+    vec3 lensedEcho = diskEmission * (0.11 / (1.0 + 0.8 * echoLuminance));
+    col += (lensedEcho + skyLight * 0.12) * lensWindow;
     float coreWidth = radius * 0.012;
     float filteredWidth = sqrt(coreWidth * coreWidth + px * px / 6.0);
     float rim = exp(-pow((distanceToShadow - coreWidth) / filteredWidth, 2.0)) * coreWidth / filteredWidth;

@@ -1,7 +1,7 @@
 import { createInfallRenderer } from './blackHoleInfall';
 import { createHotspotState } from './blackHoleHotspots';
 import {
-  vertexShader, geometryShader, materialShader, compositeShader, bloomSourceShader, bloomBlurShader,
+  vertexShader, geometryShader, skyFilterShader, materialShader, compositeShader, bloomSourceShader, bloomBlurShader,
 } from './blackHoleShaders';
 
 const MAX_PIXELS = 8_388_608;
@@ -39,7 +39,7 @@ export function startBlackHole(root: HTMLElement) {
   let playing = true;
   let inView = true, ready = false, disposed = false, lost = false;
   let time = 18.0, last = 0, raf = 0, resizeTimer = 0;
-  let geometry: Pass, material: Pass, composite: Pass, bloomSource: Pass, bloomBlur: Pass;
+  let geometry: Pass, skyFilter: Pass, material: Pass, composite: Pass, bloomSource: Pass, bloomBlur: Pass;
   let scene: Scene | null = null;
   let bloom: Bloom | null = null;
   let plasma: WebGLTexture | null = null;
@@ -174,7 +174,22 @@ export function startBlackHole(root: HTMLElement) {
     // Data textures must not be dithered: their channels contain packed coordinates.
     gl.disable(gl.DITHER);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    // Resolve near-shadow stars once into the existing cached sky slot. Keep
+    // the final texture count and the per-frame rendering work unchanged.
+    const rawSky = attachments[3];
+    const filteredSky = texture(w, h);
+    const skyTarget = target([filteredSky]);
+    use(skyFilter);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, rawSky);
+    gl.uniform1i(skyFilter.uniforms.uSource, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, scene.framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT3, gl.TEXTURE_2D, filteredSky, 0);
+    attachments[3] = filteredSky;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.deleteFramebuffer(skyTarget); framebuffers.delete(skyTarget);
+    gl.deleteTexture(rawSky); textures.delete(rawSky);
     // Only the soft light uses smaller targets. The scene, ring and stars keep
     // their original resolution. At retina density the glow is quarter-size;
     // sizing in CSS pixels keeps its apparent radius stable across densities.
@@ -319,22 +334,27 @@ export function startBlackHole(root: HTMLElement) {
     sleep(); fail();
   }
   function release() {
-    infall?.dispose(); infall = null;
-    if (gpuQuery) { gl.deleteQuery(gpuQuery); gpuQuery = null; }
-    for (const program of programs) gl.deleteProgram(program);
-    for (const tex of textures) gl.deleteTexture(tex);
-    for (const fb of framebuffers) gl.deleteFramebuffer(fb);
+    // Context loss already invalidates every GPU object. Trying to delete
+    // those old handles after restoration raises INVALID_OPERATION.
+    if (!lost) {
+      infall?.dispose();
+      if (gpuQuery) gl.deleteQuery(gpuQuery);
+      for (const program of programs) gl.deleteProgram(program);
+      for (const tex of textures) gl.deleteTexture(tex);
+      for (const fb of framebuffers) gl.deleteFramebuffer(fb);
+    }
+    infall = null; gpuQuery = null;
     programs.clear(); textures.clear(); framebuffers.clear();
     scene = null; bloom = null; plasma = null; sceneKey = '';
   }
   async function initialize() {
     const current = ++generation;
-    lost = false;
     release();
+    lost = false;
     timer = import.meta.env.DEV ? gl.getExtension('EXT_disjoint_timer_query_webgl2') : null;
     try {
-      [geometry, material, composite, bloomSource, bloomBlur] = await Promise.all([
-        makePass(geometryShader), makePass(materialShader), makePass(compositeShader),
+      [geometry, skyFilter, material, composite, bloomSource, bloomBlur] = await Promise.all([
+        makePass(geometryShader), makePass(skyFilterShader), makePass(materialShader), makePass(compositeShader),
         makePass(bloomSourceShader), makePass(bloomBlurShader),
       ]);
       if (disposed || lost || current !== generation) return;

@@ -41,10 +41,12 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
     out vec2 vLocal;
     out vec2 vShape;
     out vec4 vColor;
+    out vec2 vCenter;
     void main() {
       vec2 p = aPosition / uViewport * 2.0 - 1.0;
       gl_Position = vec4(p.x, -p.y, 0, 1);
       vLocal = aLocal; vShape = aShape; vColor = aColor;
+      vCenter = aPosition - aLocal;
     }
   `);
   gl.shaderSource(fragment, `#version 300 es
@@ -56,22 +58,45 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
     in vec2 vLocal;
     in vec2 vShape;
     in vec4 vColor;
+    in vec2 vCenter;
     out vec4 color;
     void main() {
       bool head = vShape.y < 0.0;
       float heat = head ? -1.0 - vShape.y : vShape.y;
       float distance = head ? length(vLocal) : abs(vLocal.x);
       float radius = vShape.x;
-      float aa = 0.65 / uDpr;
+      float pixelAA = 0.65 / uDpr;
+      float aa = pixelAA;
+      float arrival = 1.0;
+      vec2 p = vec2(gl_FragCoord.x / uDpr, uViewport.y - gl_FragCoord.y / uDpr);
+      if (head) {
+        vec2 source = vCenter - uCenter;
+        float r = length(source);
+        arrival = smoothstep(1.0, 1.06, r / uHorizon);
+        float lens = 1.0 - smoothstep(1.12, 1.65, r / uHorizon);
+        if (lens > 0.0) {
+          vec2 ray = p - uCenter;
+          float imageRadius = length(ray);
+          float angle = imageRadius > 0.0001
+            ? atan(ray.y, ray.x) - atan(source.y, source.x) : 0.0;
+          angle = mod(angle + 3.14159265359, 6.28318530718) - 3.14159265359;
+          float radialScale = mix(1.0, 0.38, lens);
+          float tangentialScale = mix(1.0, 6.0, lens);
+          vec2 bent = vec2((imageRadius - r) / radialScale, angle * r / tangentialScale);
+          distance = mix(distance, length(bent), lens);
+          // Filter the compressed radial width rather than letting it flicker
+          // between rows of pixels as the curved image moves toward the shadow.
+          aa /= radialScale;
+        }
+      }
       float core = (1.0 - smoothstep(radius - aa, radius + aa, distance))
         * min(1.0, radius / aa);
       float spread = 0.6 + heat * 1.4;
       float glow = exp(-pow(max(0.0, distance - radius) / spread, 2.0))
         * heat * 0.22 * min(1.0, radius);
-      vec2 p = vec2(gl_FragCoord.x / uDpr, uViewport.y - gl_FragCoord.y / uDpr);
-      float outside = smoothstep(-aa, aa, length(p - uCenter) - uHorizon);
+      float outside = smoothstep(-pixelAA, pixelAA, length(p - uCenter) - uHorizon);
       vec3 light = vColor.rgb * core + vec3(1.0, 0.75, 0.44) * glow;
-      vec3 emission = light * vColor.a * outside;
+      vec3 emission = light * vColor.a * outside * arrival;
       // Additive ribbons also need coverage on a transparent canvas. Keeping
       // RGB <= alpha preserves their light when the browser composites the sky.
       color = vec4(emission, max(emission.r, max(emission.g, emission.b)));
@@ -169,7 +194,11 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
         }
         if (first === 0 && x > -10 && x < width + 10 && y > -10 && y < height + 10) {
           const radius = star.size * (1 - heat * 0.25);
-          const extent = radius + 2 + heat * 5;
+          // Only the sprite footprint changes: the approved material path and
+          // timing remain continuous through the transition into a curved arc.
+          const lensAt = clamp((head.radius - 1.12) / (1.65 - 1.12));
+          const lens = 1 - lensAt * lensAt * (3 - 2 * lensAt);
+          const extent = (radius + 2 + heat * 5) * (1 + 5 * lens);
           const at = vertexCount;
           for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
             addVertex(x + sx * extent, y + sy * extent, sx * extent, sy * extent,
