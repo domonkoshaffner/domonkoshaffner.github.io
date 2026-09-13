@@ -1,5 +1,7 @@
 import { createInfallRenderer } from './blackHoleInfall';
-import { vertexShader, geometryShader, materialShader, compositeShader } from './blackHoleShaders';
+import {
+  vertexShader, geometryShader, materialShader, compositeShader, bloomSourceShader, bloomBlurShader,
+} from './blackHoleShaders';
 
 const MAX_PIXELS = 8_388_608;
 const MAX_WIDTH = 4096;
@@ -11,6 +13,7 @@ type Pass = {
   uniforms: Record<string, WebGLUniformLocation | null>;
 };
 type Scene = { framebuffer: WebGLFramebuffer; textures: WebGLTexture[] };
+type Bloom = { width: number; height: number; textures: WebGLTexture[]; targets: WebGLFramebuffer[] };
 
 export function startBlackHole(root: HTMLElement) {
   const canvas = root.querySelector<HTMLCanvasElement>('[data-bh-canvas]')!;
@@ -31,8 +34,9 @@ export function startBlackHole(root: HTMLElement) {
   let playing = true;
   let inView = true, ready = false, disposed = false, lost = false;
   let time = 18.0, last = 0, raf = 0, resizeTimer = 0;
-  let geometry: Pass, material: Pass, composite: Pass;
+  let geometry: Pass, material: Pass, composite: Pass, bloomSource: Pass, bloomBlur: Pass;
   let scene: Scene | null = null;
+  let bloom: Bloom | null = null;
   let plasma: WebGLTexture | null = null;
   let centerX = 0, centerY = 0, zoom = 1;
   let sceneKey = '', generation = 0;
@@ -73,6 +77,7 @@ export function startBlackHole(root: HTMLElement) {
     const uniforms = Object.fromEntries([
       'uRes', 'uCenter', 'uZoom', 'uTime',
       'uFirst', 'uSecond', 'uTransport', 'uBackground', 'uPlasma',
+      'uSceneRes', 'uBloom', 'uSource', 'uDirection',
     ].map((name) => [name, gl.getUniformLocation(program, name)]));
     return { program, uniforms };
   }
@@ -122,6 +127,11 @@ export function startBlackHole(root: HTMLElement) {
   }
 
   function deleteScene() {
+    if (bloom) {
+      for (const fb of bloom.targets) { gl.deleteFramebuffer(fb); framebuffers.delete(fb); }
+      for (const tex of bloom.textures) { gl.deleteTexture(tex); textures.delete(tex); }
+      bloom = null;
+    }
     if (!scene) return;
     gl.deleteFramebuffer(scene.framebuffer); framebuffers.delete(scene.framebuffer);
     for (const tex of scene.textures) { gl.deleteTexture(tex); textures.delete(tex); }
@@ -158,6 +168,20 @@ export function startBlackHole(root: HTMLElement) {
     gl.disable(gl.DITHER);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    // Only the soft light uses smaller targets. The scene, ring and stars keep
+    // their original resolution. At retina density the glow is quarter-size;
+    // sizing in CSS pixels keeps its apparent radius stable across densities.
+    const bw = Math.max(1, Math.ceil(Math.min(w, rect.width) / 2));
+    const bh = Math.max(1, Math.ceil(Math.min(h, rect.height) / 2));
+    const glowTextures = Array.from({ length: 2 }, () => {
+      const tex = texture(bw, bh, true);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      const anisotropy = gl.getExtension('EXT_texture_filter_anisotropic');
+      if (anisotropy) gl.texParameterf(gl.TEXTURE_2D, anisotropy.TEXTURE_MAX_ANISOTROPY_EXT, 1);
+      return tex;
+    });
+    bloom = { width: bw, height: bh, textures: glowTextures, targets: glowTextures.map(tex => target([tex])) };
     const horizon = rect.height * 0.5 * zoom * 2.598 / Math.sqrt(15 ** 2 - 2.598 ** 2);
     infall?.resize(rect.width, rect.height,
       rect.width * 0.5 + centerX * rect.height * 0.5,
@@ -168,6 +192,39 @@ export function startBlackHole(root: HTMLElement) {
       root.dataset.motionTime = time.toFixed(4);
     }
     draw();
+  }
+
+  function bindLight(pass: Pass) {
+    const names = ['uFirst', 'uSecond', 'uTransport', 'uBackground', 'uPlasma'];
+    [...scene!.textures, plasma].forEach((tex, i) => {
+      gl.activeTexture(gl.TEXTURE0 + i);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.uniform1i(pass.uniforms[names[i]], i);
+    });
+    gl.uniform1f(pass.uniforms.uTime, time);
+  }
+
+  function drawBloom() {
+    if (!bloom) return;
+    const { width, height, textures: glowTextures, targets } = bloom;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, targets[0]);
+    use(bloomSource, width, height);
+    bindLight(bloomSource);
+    gl.uniform2f(bloomSource.uniforms.uSceneRes, canvas.width, canvas.height);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    use(bloomBlur, width, height);
+    gl.uniform1i(bloomBlur.uniforms.uSource, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    for (let axis = 0; axis < 2; axis++) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, targets[1 - axis]);
+      gl.bindTexture(gl.TEXTURE_2D, glowTextures[axis]);
+      gl.uniform2i(bloomBlur.uniforms.uDirection, axis === 0 ? 1 : 0, axis === 0 ? 0 : 1);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindTexture(gl.TEXTURE_2D, glowTextures[0]);
+    gl.generateMipmap(gl.TEXTURE_2D);
   }
 
   function draw() {
@@ -182,15 +239,13 @@ export function startBlackHole(root: HTMLElement) {
       gpuQuery = gl.createQuery();
       if (gpuQuery) { gl.beginQuery(timer.TIME_ELAPSED_EXT, gpuQuery); measure = true; }
     }
+    drawBloom();
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     use(composite);
-    const names = ['uFirst', 'uSecond', 'uTransport', 'uBackground', 'uPlasma'];
-    [...scene.textures, plasma].forEach((tex, i) => {
-      gl.activeTexture(gl.TEXTURE0 + i);
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.uniform1i(composite.uniforms[names[i]], i);
-    });
-    gl.uniform1f(composite.uniforms.uTime, time);
+    bindLight(composite);
+    gl.activeTexture(gl.TEXTURE5);
+    gl.bindTexture(gl.TEXTURE_2D, bloom!.textures[0]);
+    gl.uniform1i(composite.uniforms.uBloom, 5);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     infall?.draw(time);
     if (measure && timer) gl.endQuery(timer.TIME_ELAPSED_EXT);
@@ -259,7 +314,7 @@ export function startBlackHole(root: HTMLElement) {
     for (const tex of textures) gl.deleteTexture(tex);
     for (const fb of framebuffers) gl.deleteFramebuffer(fb);
     programs.clear(); textures.clear(); framebuffers.clear();
-    scene = null; plasma = null; sceneKey = '';
+    scene = null; bloom = null; plasma = null; sceneKey = '';
   }
   async function initialize() {
     const current = ++generation;
@@ -267,8 +322,9 @@ export function startBlackHole(root: HTMLElement) {
     release();
     timer = import.meta.env.DEV ? gl.getExtension('EXT_disjoint_timer_query_webgl2') : null;
     try {
-      [geometry, material, composite] = await Promise.all([
+      [geometry, material, composite, bloomSource, bloomBlur] = await Promise.all([
         makePass(geometryShader), makePass(materialShader), makePass(compositeShader),
+        makePass(bloomSourceShader), makePass(bloomBlurShader),
       ]);
       if (disposed || lost || current !== generation) return;
       infall = createInfallRenderer(canvas, gl);

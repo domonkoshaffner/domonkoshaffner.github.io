@@ -217,15 +217,14 @@ ${common}
   }
 `;
 
-export const compositeShader = `#version 300 es
-${common}
+// Shared by the full-resolution image and a small, separately filtered glow.
+const diskLight = `
   uniform float uTime;
   uniform sampler2D uFirst;
   uniform sampler2D uSecond;
   uniform sampler2D uTransport;
   uniform sampler2D uBackground;
   uniform sampler2D uPlasma;
-  out vec4 color;
 
   vec2 flowCoordinates(float r, float phi, float age, float angularVelocity) {
     // Differential rotation: the hot inner flow overtakes the outer disk.
@@ -276,11 +275,77 @@ ${common}
     vec3 cool = vec3(0.48, 0.025, 0.001);
     vec3 col = mix(mix(hot, warm, smoothstep(0.0, 0.38, t)), cool, smoothstep(0.35, 1.0, t));
     col = mix(col, vec3(1.0, 0.64, 0.18), field.b * 0.65 * (1.0 - t));
+    // A restrained pale-gold shoulder in the strongest inner filaments.
+    float peak = smoothstep(1.4, 3.6, field.g * field.g * 14.0)
+      * (1.0 - smoothstep(0.15, 0.60, t));
+    col = mix(col, vec3(1.0, 0.72, 0.32), peak * 0.28);
     col = mix(col, col * vec3(0.85, 0.95, 1.2), clamp(dop * 2.5, 0.0, 1.0));
     float beam = pow(clamp(1.0 + dop, 0.3, 2.0), 2.0);
     return col * beam * profile * field.g * field.g * 14.0 * weight;
   }
 
+`;
+
+// Square-root encoding keeps faint glow smooth in ordinary RGBA8 targets, with
+// no floating-point-render-target extension required. Gaussian taps decode to
+// linear light before averaging. The original scene never passes through these targets.
+const bloomEncoding = `
+  vec3 encodeGlow(vec3 light) { return sqrt(clamp(light / 8.0, 0.0, 1.0)); }
+  vec3 decodeGlow(vec3 encoded) { return encoded * encoded * 8.0; }
+`;
+
+export const bloomSourceShader = `#version 300 es
+${common}
+${diskLight}
+${bloomEncoding}
+  uniform vec2 uSceneRes;
+  out vec4 color;
+  void main() {
+    vec2 screen = gl_FragCoord.xy / uRes;
+    ivec2 pixel = min(ivec2(screen * uSceneRes), ivec2(uSceneRes) - 1);
+    vec4 first = texelFetch(uFirst, pixel, 0);
+    vec4 second = texelFetch(uSecond, pixel, 0);
+    vec4 tr = texelFetch(uTransport, pixel, 0);
+    vec3 light = emission(first, tr.g * 2.0 - 1.0, tr.r)
+      + emission(second, tr.a * 2.0 - 1.0, tr.b);
+    vec2 uv = (screen * 2.0 - 1.0) * vec2(uSceneRes.x / uSceneRes.y, 1.0) - uCenter;
+    float radius = uZoom * B_CRIT / sqrt(D * D - B_CRIT * B_CRIT);
+    light *= smoothstep(radius * 0.08, radius * 0.20, length(uv) - radius);
+    // A soft threshold admits only luminous filaments. The sky, infalling stars,
+    // and analytic photon ring are deliberately absent from the glow source.
+    float lum = dot(light, vec3(0.2126, 0.7152, 0.0722));
+    float knee = clamp(lum - 0.45 + 0.30, 0.0, 0.60);
+    float contribution = max(lum - 0.45, knee * knee / 1.20) / max(lum, 0.0001);
+    color = vec4(encodeGlow(light * contribution), 1.0);
+  }
+`;
+
+export const bloomBlurShader = `#version 300 es
+${common}
+${bloomEncoding}
+  uniform sampler2D uSource;
+  uniform ivec2 uDirection;
+  out vec4 color;
+  vec3 tap(ivec2 pixel) {
+    return decodeGlow(texelFetch(uSource, clamp(pixel, ivec2(0), ivec2(uRes) - 1), 0).rgb);
+  }
+  void main() {
+    ivec2 pixel = ivec2(gl_FragCoord.xy);
+    vec3 light = tap(pixel) * 0.2270270270;
+    light += (tap(pixel - uDirection) + tap(pixel + uDirection)) * 0.1945945946;
+    light += (tap(pixel - 2 * uDirection) + tap(pixel + 2 * uDirection)) * 0.1216216216;
+    light += (tap(pixel - 3 * uDirection) + tap(pixel + 3 * uDirection)) * 0.0540540541;
+    light += (tap(pixel - 4 * uDirection) + tap(pixel + 4 * uDirection)) * 0.0162162162;
+    color = vec4(encodeGlow(light), 1.0);
+  }
+`;
+
+export const compositeShader = `#version 300 es
+${common}
+${diskLight}
+${bloomEncoding}
+  uniform sampler2D uBloom;
+  out vec4 color;
   void main() {
     ivec2 pixel = ivec2(gl_FragCoord.xy);
     vec4 first = texelFetch(uFirst, pixel, 0);
@@ -304,6 +369,12 @@ ${common}
     float aureole = exp(-distanceFromEdge / (radius * 0.055));
     col += rim * vec3(0.72, 0.86, 1.0) * 3.0
       + aureole * vec3(0.12, 0.32, 0.80) * 0.85;
+    vec2 screen = gl_FragCoord.xy / uRes;
+    vec3 glow = decodeGlow(textureLod(uBloom, screen, 0.0).rgb) * 0.30
+      + decodeGlow(textureLod(uBloom, screen, 2.0).rgb) * 0.18
+      + decodeGlow(textureLod(uBloom, screen, 4.0).rgb) * 0.08;
+    // Keep the shadow black and the thin blue-white ring sharply defined.
+    col += glow * smoothstep(radius * 0.035, radius * 0.14, distanceFromEdge);
     col *= outside;
 
     float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
