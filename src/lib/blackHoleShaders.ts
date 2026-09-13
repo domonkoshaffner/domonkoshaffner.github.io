@@ -225,6 +225,30 @@ const diskLight = `
   uniform sampler2D uTransport;
   uniform sampler2D uBackground;
   uniform sampler2D uPlasma;
+  uniform vec4 uHotSpots[2];
+  uniform vec2 uHotSpotWidths[2];
+
+  float localHeating(float r, float phi, vec2 radialDerivative, vec2 angularDerivative) {
+    float heat = 0.0;
+    for (int i = 0; i < 2; i++) {
+      vec4 knot = uHotSpots[i];
+      vec2 width = uHotSpotWidths[i];
+      float dr = r - knot.x;
+      if (knot.w <= 0.0 || abs(dr) > width.x * 4.5 + length(radialDerivative)) continue;
+      float angle = phi - knot.y - knot.z * dr;
+      angle = mod(angle + PI, TAU) - PI;
+      vec2 shearedDerivative = angularDerivative - knot.z * radialDerivative;
+      // Integrate the narrow knot over the pixel footprint. This keeps the
+      // full-resolution highlight and the small bloom source equally stable.
+      vec2 variance = vec2(dot(radialDerivative, radialDerivative),
+        dot(shearedDerivative, shearedDerivative)) / 12.0;
+      vec2 filteredWidth = sqrt(width * width + variance);
+      vec2 distance = vec2(dr, angle) / filteredWidth;
+      float coverage = width.x * width.y / (filteredWidth.x * filteredWidth.y);
+      heat += exp(-0.5 * dot(distance, distance)) * knot.w * coverage;
+    }
+    return heat;
+  }
 
   vec2 flowCoordinates(float r, float phi, float age, float angularVelocity) {
     // Differential rotation: the hot inner flow overtakes the outer disk.
@@ -259,6 +283,9 @@ const diskLight = `
     // seam, so mip filtering remains stable at the shadow and disk boundaries.
     dxA.x -= round(dxA.x); dyA.x -= round(dyA.x);
     dxB.x -= round(dxB.x); dyB.x -= round(dyB.x);
+    vec2 radialDerivative = vec2(dFdx(r), dFdy(r));
+    vec2 angularDerivative = vec2(dFdx(phi), dFdy(phi));
+    angularDerivative -= TAU * round(angularDerivative / TAU);
     if (r <= R_IN || weight < 0.001) return vec3(0.0);
     vec3 a = textureGrad(uPlasma, stA, dxA, dyA).rgb;
     vec3 b = textureGrad(uPlasma, stB, dxB, dyB).rgb;
@@ -281,7 +308,13 @@ const diskLight = `
     col = mix(col, vec3(1.0, 0.72, 0.32), peak * 0.28);
     col = mix(col, col * vec3(0.85, 0.95, 1.2), clamp(dop * 2.5, 0.0, 1.0));
     float beam = pow(clamp(1.0 + dop, 0.3, 2.0), 2.0);
-    return col * beam * profile * field.g * field.g * 14.0 * weight;
+    float heat = localHeating(r, phi, radialDerivative, angularDerivative);
+    // Heat existing strands, retaining their dark lanes and fine structure.
+    // The same emission feeds bloom, so the knot belongs to the luminous disk.
+    float energy = field.g * field.g * 14.0;
+    col = mix(col, vec3(1.0, 0.85, 0.52), clamp(heat * 0.55, 0.0, 0.65));
+    energy += heat * (0.40 + 1.90 * energy);
+    return col * beam * profile * energy * weight;
   }
 
 `;

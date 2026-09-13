@@ -1,4 +1,5 @@
 import { createInfallRenderer } from './blackHoleInfall';
+import { createHotspotState } from './blackHoleHotspots';
 import {
   vertexShader, geometryShader, materialShader, compositeShader, bloomSourceShader, bloomBlurShader,
 } from './blackHoleShaders';
@@ -30,6 +31,7 @@ export function startBlackHole(root: HTMLElement) {
   };
   if (!context) { fail(); return () => {}; }
   const gl = context;
+  const hotSpots = createHotspotState();
   // Start each visit in motion; Pause applies to the current visit only.
   let playing = true;
   let inView = true, ready = false, disposed = false, lost = false;
@@ -78,6 +80,7 @@ export function startBlackHole(root: HTMLElement) {
       'uRes', 'uCenter', 'uZoom', 'uTime',
       'uFirst', 'uSecond', 'uTransport', 'uBackground', 'uPlasma',
       'uSceneRes', 'uBloom', 'uSource', 'uDirection',
+      'uHotSpots[0]', 'uHotSpotWidths[0]',
     ].map((name) => [name, gl.getUniformLocation(program, name)]));
     return { program, uniforms };
   }
@@ -202,6 +205,8 @@ export function startBlackHole(root: HTMLElement) {
       gl.uniform1i(pass.uniforms[names[i]], i);
     });
     gl.uniform1f(pass.uniforms.uTime, time);
+    gl.uniform4fv(pass.uniforms['uHotSpots[0]'], hotSpots.parameters);
+    gl.uniform2fv(pass.uniforms['uHotSpotWidths[0]'], hotSpots.widths);
   }
 
   function drawBloom() {
@@ -230,6 +235,7 @@ export function startBlackHole(root: HTMLElement) {
   function draw() {
     if (!scene || !ready || lost || disposed) return;
     const began = import.meta.env.DEV ? performance.now() : 0;
+    hotSpots.update(time);
     if (timer && gpuQuery && gl.getQueryParameter(gpuQuery, gl.QUERY_RESULT_AVAILABLE)) {
       if (!gl.getParameter(timer.GPU_DISJOINT_EXT)) gpuMs = gl.getQueryParameter(gpuQuery, gl.QUERY_RESULT) / 1e6;
       gl.deleteQuery(gpuQuery); gpuQuery = null;
