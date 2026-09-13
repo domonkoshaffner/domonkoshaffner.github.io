@@ -12,7 +12,10 @@ import { blackHole, profile } from '../data/site';
     <p class="lede">{profile.headline}</p>
   </div>
   <div class="hero-controls wrap">
-    <p class="visualisation-note">{blackHole.note}</p>
+    <p class="visualisation-note">
+      {blackHole.note}
+      <a class="visualisation-credit" href={blackHole.credit.url} target="_blank" rel="noopener noreferrer">{blackHole.credit.label}</a>
+    </p>
     <button type="button" class="pill" data-bh-toggle aria-pressed="false" hidden>Pause</button>
   </div>
 </section>
@@ -82,6 +85,12 @@ import { blackHole, profile } from '../data/site';
     text-wrap: pretty;
   }
   .hero-controls .pill { flex-shrink: 0; }
+  .visualisation-credit {
+    display: block;
+    width: fit-content;
+    margin-top: 0.35rem;
+    text-decoration-color: var(--hair);
+  }
   @media (max-width: 860px) {
     .eyebrow { font-size: 0.6rem; letter-spacing: 0.1em; }
     .hero-content { padding-bottom: 1.5rem; }
