@@ -18,7 +18,11 @@ export const profile = {
 };
 
 export const blackHole = {
-  note: 'An artistic interpretation of a black hole. The photon ring, accretion flow, and stellar motion are simplified for visual effect and are not a physically exact simulation.',
+  singularity: {
+    title: 'Approaching the singularity.',
+    description: 'From gravitational collapse to the emergence of superintelligence.',
+  },
+  note: 'Artistic interpretation. Light paths and motion are simplified.',
   credit: {
     label: 'Inspired by NASA’s black hole simulation.',
     url: 'https://www.youtube.com/watch?v=dGEIsnBRWGs',

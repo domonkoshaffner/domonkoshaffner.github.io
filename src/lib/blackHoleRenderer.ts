@@ -1,5 +1,6 @@
 import { createInfallRenderer } from './blackHoleInfall';
 import { createHotspotState } from './blackHoleHotspots';
+import { createBloomCadence } from './blackHolePerformance';
 import {
   vertexShader, geometryShader, skyFilterShader, materialShader, compositeShader, bloomSourceShader, bloomBlurShader,
 } from './blackHoleShaders';
@@ -7,6 +8,7 @@ import {
 const MAX_PIXELS = 8_388_608;
 const MAX_WIDTH = 4096;
 const ATLAS_SIZE = 2048;
+const LIGHT_TEXTURES = ['uFirst', 'uSecond', 'uTransport', 'uBackground', 'uPlasma'];
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
 type Pass = {
@@ -35,6 +37,7 @@ export function startBlackHole(root: HTMLElement) {
   const ground = getComputedStyle(root).getPropertyValue('--space').trim();
   const groundColor = new Float32Array([1, 3, 5].map((start) => parseInt(ground.slice(start, start + 2), 16) / 255));
   const hotSpots = createHotspotState();
+  const bloomCadence = createBloomCadence();
   // Start each visit in motion; Pause applies to the current visit only.
   let playing = true;
   let inView = true, ready = false, disposed = false, lost = false;
@@ -134,6 +137,7 @@ export function startBlackHole(root: HTMLElement) {
   }
 
   function deleteScene() {
+    bloomCadence.invalidate();
     if (bloom) {
       for (const fb of bloom.targets) { gl.deleteFramebuffer(fb); framebuffers.delete(fb); }
       for (const tex of bloom.textures) { gl.deleteTexture(tex); textures.delete(tex); }
@@ -217,12 +221,11 @@ export function startBlackHole(root: HTMLElement) {
   }
 
   function bindLight(pass: Pass) {
-    const names = ['uFirst', 'uSecond', 'uTransport', 'uBackground', 'uPlasma'];
-    [...scene!.textures, plasma].forEach((tex, i) => {
+    for (let i = 0; i < LIGHT_TEXTURES.length; i++) {
       gl.activeTexture(gl.TEXTURE0 + i);
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.uniform1i(pass.uniforms[names[i]], i);
-    });
+      gl.bindTexture(gl.TEXTURE_2D, i < 4 ? scene!.textures[i] : plasma);
+      gl.uniform1i(pass.uniforms[LIGHT_TEXTURES[i]], i);
+    }
     gl.uniform1f(pass.uniforms.uTime, time);
     gl.uniform4fv(pass.uniforms['uHotSpots[0]'], hotSpots.parameters);
     gl.uniform2fv(pass.uniforms['uHotSpotWidths[0]'], hotSpots.widths);
@@ -260,11 +263,14 @@ export function startBlackHole(root: HTMLElement) {
       gl.deleteQuery(gpuQuery); gpuQuery = null;
     }
     let measure = false;
-    if (timer && !gpuQuery && draws % 60 === 0) {
+    // An odd interval samples both refreshed and cached glow frames on 120 Hz displays.
+    if (timer && !gpuQuery && draws % 61 === 0) {
       gpuQuery = gl.createQuery();
       if (gpuQuery) { gl.beginQuery(timer.TIME_ELAPSED_EXT, gpuQuery); measure = true; }
     }
-    drawBloom();
+    // Diffuse light changes slowly. Its cached texture can update less often
+    // while every sharp filament, lensed star and ring pixel is drawn anew.
+    if (bloomCadence.shouldUpdate(time)) drawBloom();
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     use(composite);
     bindLight(composite);
@@ -287,6 +293,7 @@ export function startBlackHole(root: HTMLElement) {
     const elapsed = last ? now - last : 0;
     last = now;
     time += Math.min(elapsed, 100) / 1000;
+    bloomCadence.sample(elapsed);
     draw();
     if (import.meta.env.DEV && elapsed > 0) {
       samples.push(elapsed);
@@ -297,6 +304,7 @@ export function startBlackHole(root: HTMLElement) {
         root.dataset.frameP95 = sorted[Math.floor(sorted.length * 0.95)].toFixed(2);
         root.dataset.cpuMs = (cpuSamples.reduce((a, b) => a + b, 0) / cpuSamples.length).toFixed(2);
         root.dataset.gpuMs = gpuMs.toFixed(2);
+        root.dataset.bloomHz = String(bloomCadence.rate);
         root.dataset.motionTime = time.toFixed(4);
         samples = []; cpuSamples = [];
       }
@@ -311,6 +319,7 @@ export function startBlackHole(root: HTMLElement) {
   function wake() {
     if (!raf && playing && inView && !document.hidden && ready && !lost && !disposed) {
       last = 0;
+      bloomCadence.resume();
       raf = requestAnimationFrame(frame);
     }
   }
@@ -334,6 +343,7 @@ export function startBlackHole(root: HTMLElement) {
     sleep(); fail();
   }
   function release() {
+    bloomCadence.invalidate();
     // Context loss already invalidates every GPU object. Trying to delete
     // those old handles after restoration raises INVALID_OPERATION.
     if (!lost) {

@@ -8,12 +8,13 @@ import { blackHole, profile } from '../data/site';
   <div class="hero-content wrap">
     <p class="eyebrow display">{profile.role}</p>
     <h1 class="display">{profile.name}</h1>
-    <p class="lede">{profile.headline}</p>
+    <p class="motto">{blackHole.singularity.title}</p>
+    <p class="lede">{blackHole.singularity.description}</p>
   </div>
   <div class="hero-controls wrap">
-    <p class="visualisation-note">
-      {blackHole.note}
-      <a class="visualisation-credit" href={blackHole.credit.url} target="_blank" rel="noopener noreferrer">{blackHole.credit.label}</a>
+    <p class="visualisation-caption">
+      <span>{blackHole.note}</span>
+      <a href={blackHole.credit.url} target="_blank" rel="noopener noreferrer">{blackHole.credit.label}</a>
     </p>
     <button type="button" class="pill" data-bh-toggle aria-pressed="false" hidden>Pause</button>
   </div>
@@ -31,7 +32,7 @@ import { blackHole, profile } from '../data/site';
   .hero-content {
     position: relative;
     width: 100%;
-    padding-bottom: clamp(2rem, 4vh, 3rem);
+    padding-bottom: 1.1rem;
   }
   .eyebrow {
     display: flex;
@@ -54,12 +55,18 @@ import { blackHole, profile } from '../data/site';
     text-wrap: balance;
     max-width: 11ch;
   }
-  .lede {
+  .motto {
     margin-top: 1.4rem;
-    max-width: 37ch;
-    font-size: clamp(1rem, 1.3vw, 1.2rem);
+    font-size: clamp(1.1rem, 1.5vw, 1.35rem);
+    line-height: 1.4;
+    color: var(--ink);
+  }
+  .lede {
+    margin-top: 0.55rem;
+    font-size: clamp(0.95rem, 1.2vw, 1.1rem);
     line-height: 1.55;
     color: var(--muted);
+    text-wrap: pretty;
   }
   .hero-controls {
     position: relative;
@@ -70,23 +77,21 @@ import { blackHole, profile } from '../data/site';
     justify-content: space-between;
     gap: 2rem;
   }
-  .visualisation-note {
-    max-width: 78ch;
-    font-size: 0.75rem;
+  .visualisation-caption {
+    font-size: 0.7rem;
     line-height: 1.5;
     color: var(--muted);
     text-wrap: pretty;
   }
   .hero-controls .pill { flex-shrink: 0; }
-  .visualisation-credit {
-    display: block;
-    width: fit-content;
-    margin-top: 0.35rem;
+  /* Reserve the control's space while graphics initialize, keeping the motto still. */
+  .hero-controls .pill[hidden] { display: inline-flex; visibility: hidden; }
+  .visualisation-caption a {
+    margin-left: 0.35em;
     text-decoration-color: var(--hair);
   }
   @media (max-width: 860px) {
     .eyebrow { font-size: 0.6rem; letter-spacing: 0.1em; }
-    .hero-content { padding-bottom: 1.5rem; }
     .hero-controls { padding-bottom: 1.5rem; gap: 1rem; }
     h1 { font-size: clamp(1.65rem, 8vw, 3.2rem); }
   }

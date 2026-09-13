@@ -27,6 +27,7 @@ const shownProjects = projects.filter((project) => project.public === true);
       <div class="sections">
         <Section id="about" title={title.about}>
           <div id="now" class="anchor">
+            <p class="about-lede">{profile.headline}</p>
             {now.map((paragraph) => <p>{paragraph}</p>)}
           </div>
           <div class="fig"><SensorFrame /></div>
@@ -166,6 +167,7 @@ const shownProjects = projects.filter((project) => project.public === true);
 <style>
   .page-body { padding-top: clamp(4rem, 8vw, 6.5rem); }
   .sections { max-width: 760px; margin-inline: auto; }
+  .about-lede { font-size: 1.2rem; line-height: 1.55; margin-bottom: 1.5rem; }
   .fig { margin-top: 2.5rem; max-width: 420px; }
   .subsection, .anchor { scroll-margin-top: var(--header-offset); }
   .subsection + .subsection, .fig + .subsection { margin-top: 3rem; }

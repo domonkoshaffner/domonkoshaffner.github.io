@@ -3,6 +3,7 @@ const RATE = 4.8;
 const PITCH = 2.2;
 const SEGMENTS = 26;
 const TAU = Math.PI * 2;
+const NORMAL = 1 / Math.hypot(1, PITCH);
 
 const clamp = (v: number) => Math.max(0, Math.min(1, v));
 const hash = (n: number) => {
@@ -181,9 +182,8 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
             const cos = Math.cos(point.angle), sin = Math.sin(point.angle);
             const px = cx + cos * point.radius * horizon;
             const py = cy + sin * point.radius * horizon;
-            const normal = 1 / Math.hypot(1, PITCH);
-            const nx = (PITCH * cos - sin) * normal;
-            const ny = (cos + PITCH * sin) * normal;
+            const nx = (PITCH * cos - sin) * NORMAL;
+            const ny = (cos + PITCH * sin) * NORMAL;
             const half = star.size * (0.65 + heat * 0.4) * (1 - material) ** 1.4;
             const extent = half + 2 + heat * 5;
             const at = vertexCount;
@@ -200,10 +200,10 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
           const lens = 1 - lensAt * lensAt * (3 - 2 * lensAt);
           const extent = (radius + 2 + heat * 5) * (1 + 5 * lens);
           const at = vertexCount;
-          for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-            addVertex(x + sx * extent, y + sy * extent, sx * extent, sy * extent,
-              radius, -1 - heat, green, blue, alpha);
-          }
+          addVertex(x - extent, y - extent, -extent, -extent, radius, -1 - heat, green, blue, alpha);
+          addVertex(x + extent, y - extent, extent, -extent, radius, -1 - heat, green, blue, alpha);
+          addVertex(x - extent, y + extent, -extent, extent, radius, -1 - heat, green, blue, alpha);
+          addVertex(x + extent, y + extent, extent, extent, radius, -1 - heat, green, blue, alpha);
           quad(at, at + 1, at + 2, at + 3);
         }
       }
