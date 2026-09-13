@@ -378,6 +378,7 @@ ${common}
 ${diskLight}
 ${bloomEncoding}
   uniform sampler2D uBloom;
+  uniform vec3 uSpace;
   out vec4 color;
   void main() {
     ivec2 pixel = ivec2(gl_FragCoord.xy);
@@ -415,6 +416,14 @@ ${bloomEncoding}
     vec3 mappedC = 1.0 - exp(-col * 1.3);
     col = pow(clamp(mix(mappedL, mappedC, 0.12), 0.0, 1.0), vec3(1.0 / 2.2));
     col *= clamp(1.0 - 0.25 * dot(uv * 0.6, uv * 0.6), 0.0, 1.0);
-    color = vec4(col, 1.0);
+    // Keep the dense, lensed sky near the disk. Distant space reveals the
+    // page's native-resolution star canvas, without wide-angle stretching.
+    // A broad Gaussian falloff gives the dense field a long, gentle tail
+    // instead of a visible circular boundary against the quieter page sky.
+    float skyFalloff = max(length(uv) / radius - 3.8, 0.0) / 3.2;
+    float coverage = exp(-skyFalloff * skyFalloff);
+    // The vignette shapes the luminous scene, never the page's blue-black floor.
+    col += uSpace * (1.0 - col) * outside;
+    color = vec4(col * coverage, coverage);
   }
 `;

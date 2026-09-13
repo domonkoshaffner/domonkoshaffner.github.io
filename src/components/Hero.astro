@@ -5,7 +5,6 @@ import { blackHole, profile } from '../data/site';
 
 <section class="hero" id="top">
   <BlackHole />
-  <div class="hero-scrim" aria-hidden="true"></div>
   <div class="hero-content wrap">
     <p class="eyebrow display">{profile.role}</p>
     <h1 class="display">{profile.name}</h1>
@@ -28,12 +27,6 @@ import { blackHole, profile } from '../data/site';
     flex-direction: column;
     justify-content: flex-end;
     isolation: isolate;
-  }
-  .hero-scrim {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: linear-gradient(to top, var(--space) 0%, rgba(5, 7, 13, 0.42) 16%, transparent 35%);
   }
   .hero-content {
     position: relative;

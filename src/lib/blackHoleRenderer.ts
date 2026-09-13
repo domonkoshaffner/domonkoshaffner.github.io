@@ -21,7 +21,7 @@ export function startBlackHole(root: HTMLElement) {
   const toggle = document.querySelector<HTMLButtonElement>('[data-bh-toggle]');
   let infall: ReturnType<typeof createInfallRenderer> = null;
   const context = canvas.getContext('webgl2', {
-    antialias: false, alpha: false, depth: false, stencil: false,
+    antialias: false, alpha: true, premultipliedAlpha: true, depth: false, stencil: false,
     powerPreference: 'high-performance',
   });
   const fail = () => {
@@ -31,6 +31,9 @@ export function startBlackHole(root: HTMLElement) {
   };
   if (!context) { fail(); return () => {}; }
   const gl = context;
+  // Resolve the actual CSS ground colour rather than a second shader palette.
+  const ground = getComputedStyle(root).getPropertyValue('--space').trim();
+  const groundColor = new Float32Array([1, 3, 5].map((start) => parseInt(ground.slice(start, start + 2), 16) / 255));
   const hotSpots = createHotspotState();
   // Start each visit in motion; Pause applies to the current visit only.
   let playing = true;
@@ -81,6 +84,7 @@ export function startBlackHole(root: HTMLElement) {
       'uFirst', 'uSecond', 'uTransport', 'uBackground', 'uPlasma',
       'uSceneRes', 'uBloom', 'uSource', 'uDirection',
       'uHotSpots[0]', 'uHotSpotWidths[0]',
+      'uSpace',
     ].map((name) => [name, gl.getUniformLocation(program, name)]));
     return { program, uniforms };
   }
@@ -252,6 +256,7 @@ export function startBlackHole(root: HTMLElement) {
     gl.activeTexture(gl.TEXTURE5);
     gl.bindTexture(gl.TEXTURE_2D, bloom!.textures[0]);
     gl.uniform1i(composite.uniforms.uBloom, 5);
+    gl.uniform3fv(composite.uniforms.uSpace, groundColor);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     infall?.draw(time);
     if (measure && timer) gl.endQuery(timer.TIME_ELAPSED_EXT);

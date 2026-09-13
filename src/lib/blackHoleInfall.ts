@@ -71,7 +71,10 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
       vec2 p = vec2(gl_FragCoord.x / uDpr, uViewport.y - gl_FragCoord.y / uDpr);
       float outside = smoothstep(-aa, aa, length(p - uCenter) - uHorizon);
       vec3 light = vColor.rgb * core + vec3(1.0, 0.75, 0.44) * glow;
-      color = vec4(light * vColor.a * outside, 0.0);
+      vec3 emission = light * vColor.a * outside;
+      // Additive ribbons also need coverage on a transparent canvas. Keeping
+      // RGB <= alpha preserves their light when the browser composites the sky.
+      color = vec4(emission, max(emission.r, max(emission.g, emission.b)));
     }
   `);
   gl.compileShader(vertex); gl.compileShader(fragment);
