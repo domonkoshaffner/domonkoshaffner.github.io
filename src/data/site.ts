@@ -192,12 +192,6 @@ export const publications: Publication[] = [
   },
 ];
 
-export const researchAffiliation = {
-  role: 'Former member',
-  org: 'ELTE AI Research Group',
-  url: 'https://ai.elte.hu/',
-};
-
 export const researchProfiles = [
   { title: 'Google Scholar', url: 'https://scholar.google.com/citations?user=pZQRhckAAAAJ&hl=en' },
   { title: 'OpenReview', url: 'https://openreview.net/profile?id=%7EDomonkos_Haffner1' },
@@ -264,6 +258,7 @@ export const education = [
 export const affiliations = [
   { role: 'Member', org: 'Mensa International', url: 'https://www.mensa.org/' },
   { role: 'Member', org: 'GO-Club Salzburg', url: 'https://www.argekultur.at/go-club/' },
+  { role: 'Former member', org: 'ELTE AI Research Group', url: 'https://ai.elte.hu/' },
 ];
 
 export const skills = [

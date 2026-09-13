@@ -8,7 +8,7 @@ import SensorFrame from '../components/SensorFrame.astro';
 import StarField from '../components/StarField.astro';
 import Footer from '../components/Footer.astro';
 import {
-  profile, sections, now, publications, researchAffiliation, researchProfiles, talks, recognition,
+  profile, sections, now, publications, researchProfiles, talks, recognition,
   education, skills, contact, affiliations, labels, projectSection, projects, blog, bookPage,
 } from '../data/site';
 
@@ -77,9 +77,6 @@ const shownProjects = projects.filter((project) => project.public === true);
         <Section id="background" title={title.background}>
           <section class="subsection" id="research" aria-labelledby="research-title">
             <h3 class="sub" id="research-title">{labels.research}</h3>
-            <p class="research-affiliation small muted">
-              <a href={researchAffiliation.url} target="_blank" rel="noopener noreferrer">{researchAffiliation.org}</a> · {researchAffiliation.role}
-            </p>
             <ul class="stack">
               {publications.map((publication) => (
                 <li>
@@ -174,7 +171,6 @@ const shownProjects = projects.filter((project) => project.public === true);
   .sub { font-size: 1.25rem; font-weight: 500; margin: 0 0 1.25rem; }
   .stack li + li { margin-top: 1.25rem; }
   .strong { font-weight: 500; }
-  .research-affiliation { margin-bottom: 1.5rem; }
   .dated li { display: grid; grid-template-columns: 5.5rem 1fr; gap: 0 1rem; }
   .dated .when { font-size: 0.9rem; padding-top: 0.15rem; }
   .dated p + p { margin-top: 0.1rem; }
