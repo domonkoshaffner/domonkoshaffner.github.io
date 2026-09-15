@@ -39,7 +39,7 @@ export const sections = [
 ];
 
 export const now = [
-  'My current work at Atomic Scale Industries by DiffuseDrive is in robotics: building systems that help us understand what a robot actually did, where it struggled, and how its behaviour changes. It brings together simulation, sensor data, and machine learning to make robot behaviour easier to interpret and evaluate.',
+  'My current work at Atomic Skills Industries by DiffuseDrive is in robotics: building systems that help us understand what a robot actually did, where it struggled, and how its behaviour changes. It brings together simulation, sensor data, and machine learning to make robot behaviour easier to interpret and evaluate.',
   'Before that, I was the principal architect of ATLAS, our self-serve, air-gapped synthetic-data platform. I built the core pipelines for domain and instance adaptation, captioning, and quality control. The thread through both is the same: turning research into systems that hold up outside a demonstration.',
 ];
 
@@ -104,7 +104,7 @@ export const experience: Experience[] = [
   {
     dates: 'Jul 2026 – present',
     role: 'Founding AI Architect',
-    org: 'Atomic Scale Industries by DiffuseDrive, San Francisco (working from Salzburg)',
+    org: 'Atomic Skills Industries by DiffuseDrive, San Francisco (working from Salzburg)',
     focus: 'Robotics and autonomous systems',
     summary:
       'Building tools to understand and evaluate robot behaviour, connecting simulation and sensor data with machine learning.',
