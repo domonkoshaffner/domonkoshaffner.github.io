@@ -266,7 +266,7 @@ export const skills = [
   { group: 'Robotics', items: ['Isaac Sim and Isaac Lab', 'robot-behaviour annotation', 'temporal modelling', 'simulation-to-real evaluation'] },
   { group: 'Computer vision', items: ['Image embeddings and retrieval', 'detection and segmentation', 'CLIP', 'DINO', 'SAM', 'YOLO'] },
   { group: 'ML engineering', items: ['PyTorch', 'Hugging Face Diffusers and Transformers', 'Hydra', 'training and evaluation pipelines', 'data curation'] },
-  { group: 'Production', items: ['Azure ML', 'AWS', 'Docker', 'Terraform', 'air-gapped deployment'] },
+  { group: 'Production', items: ['Azure ML', 'AWS', 'Palantir Foundry', 'Docker', 'Terraform', 'air-gapped deployment'] },
   { group: 'Technical leadership', items: ['AI architecture', 'technical direction', 'hiring', 'mentoring', 'engineering reviews'] },
   { group: 'Languages', items: ['Python', 'C++', 'SQL', 'JavaScript', 'Java'] },
   { group: 'Spoken', items: ['Hungarian (native)', 'English (C1)', 'German (B2)'] },
