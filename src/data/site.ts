@@ -305,9 +305,25 @@ export interface BlogPost {
   body: BlogBlock[];
 }
 
+export interface ExternalBlogPost extends Omit<BlogPost, 'slug' | 'body'> {
+  url: string;
+  publication: string;
+  readLabel: string;
+}
+
 // Only publicly shareable posts belong here. Write private drafts in .local/;
 // public: false keeps a post out of the build, but does not hide its source.
-export const blogPosts: BlogPost[] = [];
+export const blogPosts: (BlogPost | ExternalBlogPost)[] = [
+  {
+    title: 'How can GenAI and synthetic data 4X Computer Vision performance?',
+    date: '2024-11-04',
+    summary: 'Using generative AI to fill gaps in computer vision training data. We compare real, synthetic, and mixed datasets for aerial object detection with YOLOv5, evaluating each on the same real-world validation set.',
+    public: true,
+    url: 'https://diffusedrive.com/blog/how-can-genai-and-synthetic-data-4x-computer-vision-performance#hero',
+    publication: 'DiffuseDrive · Co-authored study',
+    readLabel: 'Read on DiffuseDrive',
+  },
+];
 
 export const publishedPosts = blogPosts
   .filter((post) => post.public === true)

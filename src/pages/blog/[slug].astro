@@ -3,10 +3,12 @@ import type { GetStaticPaths } from 'astro';
 import Writing from '../../layouts/Writing.astro';
 import { blog, profile, publishedPosts, type BlogPost } from '../../data/site';
 
-export const getStaticPaths = (() => publishedPosts.map((post) => ({
-  params: { slug: post.slug },
-  props: { post },
-}))) satisfies GetStaticPaths;
+export const getStaticPaths = (() => publishedPosts
+  .filter((post): post is BlogPost => 'slug' in post)
+  .map((post) => ({
+    params: { slug: post.slug },
+    props: { post },
+  }))) satisfies GetStaticPaths;
 
 interface Props { post: BlogPost }
 const { post } = Astro.props;

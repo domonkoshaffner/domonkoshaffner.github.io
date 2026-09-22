@@ -16,16 +16,22 @@ const formatDate = (date: string) => new Intl.DateTimeFormat('en-GB', {
 
   {publishedPosts.length ? (
     <ol class="posts">
-      {publishedPosts.map((post) => (
-        <li>
-          <time datetime={post.date} class="small muted tnum">{formatDate(post.date)}</time>
-          <div>
-            <h2><a href={`/blog/${post.slug}/`}>{post.title}</a></h2>
-            <p class="muted">{post.summary}</p>
-            <a class="small" href={`/blog/${post.slug}/`}>{blog.read} <span aria-hidden="true">↗</span></a>
-          </div>
-        </li>
-      ))}
+      {publishedPosts.map((post) => {
+        const external = 'url' in post;
+        const href = external ? post.url : `/blog/${post.slug}/`;
+        const linkProps = external ? { target: '_blank', rel: 'noopener noreferrer' } : {};
+        return (
+          <li>
+            <time datetime={post.date} class="small muted tnum">{formatDate(post.date)}</time>
+            <div>
+              {external && <p class="publication small muted">{post.publication}</p>}
+              <h2><a href={href} {...linkProps}>{post.title}</a></h2>
+              <p class="muted">{post.summary}</p>
+              <a class="small" href={href} {...linkProps}>{external ? post.readLabel : blog.read} <span aria-hidden="true">↗</span></a>
+            </div>
+          </li>
+        );
+      })}
     </ol>
   ) : (
     <div class="empty">
@@ -48,6 +54,7 @@ const formatDate = (date: string) => new Intl.DateTimeFormat('en-GB', {
   h2 { font-size: 1.35rem; font-weight: 500; line-height: 1.4; }
   h2 + p { margin-top: 0.65rem; }
   .posts p { margin-bottom: 1rem; }
+  .posts .publication { margin-bottom: 0.5rem; }
   .empty { display: grid; grid-template-columns: 3.5rem 1fr; gap: 1.5rem; padding-block: 2.5rem; border-bottom: 1px solid var(--hair); }
   .empty-mark { font-family: var(--display); color: var(--accent); font-size: 1.25rem; }
   .back { margin-top: 2.5rem; }
