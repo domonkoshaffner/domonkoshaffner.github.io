@@ -141,6 +141,18 @@ export const projects: Project[] = [
     public: true,
   },
   {
+    id: 'relational-qk',
+    title: 'Controlled Q/K Interventions in Visual Counting',
+    eyebrow: 'Interpretability research',
+    summary: 'Testing whether small edits inside a vision-language model’s attention specifically change how it counts objects.',
+    story: [
+      'Vision-language models still miscount objects in simple scenes. I wanted to know whether counting depends on particular directions inside the model’s visual attention: the ones that tell apart image patches from the same object and from different objects.',
+      'Using Qwen3.5-4B and synthetic scenes with known object masks, I fit one query and one key direction per vision attention head, edit them at different strengths, and compare the effect against random edits of matched size and a colour question that should be unaffected. The final test followed a protocol fixed in advance, on freshly generated images.',
+    ],
+    releaseNote: 'Paper and source code coming soon.',
+    public: true,
+  },
+  {
     id: 'macro-app',
     title: 'Macro App',
     eyebrow: 'Personal nutrition tracker',
