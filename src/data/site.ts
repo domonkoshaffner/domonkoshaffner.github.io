@@ -142,6 +142,19 @@ export const projects: Project[] = [
     public: true,
   },
   {
+    id: 'word-trainer',
+    title: 'Word Trainer',
+    eyebrow: 'Personal vocabulary trainer',
+    summary: 'A German vocabulary trainer that drills me on words from my own spreadsheet.',
+    story: [
+      'I built this while learning German. I kept collecting new words in an Excel file, one sheet per topic, each with its translation and an example sentence from wherever I’d found it. I wanted something that would drill me on that file rather than yet another app with someone else’s word lists.',
+      'The spreadsheet stays the source of truth. A small Node server reads it, and a single-page trainer turns each batch into true-or-false, multiple-choice, matching, sentence-unscrambling and typing exercises, with a review batch for mistakes and a timed test. It runs locally and looks like a 1980s CRT terminal.',
+    ],
+    url: 'https://github.com/domonkoshaffner/word-trainer',
+    linkLabel: 'View source on GitHub',
+    public: true,
+  },
+  {
     id: 'cityskate',
     title: 'CitySkate',
     eyebrow: 'Skating films',
