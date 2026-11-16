@@ -1,0 +1,95 @@
+---
+import Writing from '../layouts/Writing.astro';
+import { profile, projectPage, projects } from '../data/site';
+
+const shownProjects = projects.filter((project) => project.public === true);
+---
+
+<Writing title={projectPage.title} description={projectPage.description}>
+  <p class="eyebrow display">{projectPage.eyebrow}</p>
+  <h1 class="display">{projectPage.title}</h1>
+  <p class="intro">{projectPage.description}</p>
+
+  {shownProjects.length ? (
+    <ol class="projects" role="list">
+      {shownProjects.map((project, index) => (
+        <li id={project.id} class:list={{ featured: project.featured }}>
+          <span class="number tnum" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+          <div>
+            {project.eyebrow && <p class="project-eyebrow display">{project.eyebrow}</p>}
+            <h2>{project.title}</h2>
+            <p class="project-summary muted">{project.summary}</p>
+            {project.story?.length && (
+              <div class="project-story muted">
+                {project.story.map((paragraph) => <p>{paragraph}</p>)}
+              </div>
+            )}
+            {project.workflow?.length && (
+              <div class="workflow">
+                {project.workflow.map((step) => (
+                  <section>
+                    <h3>{step.title}</h3>
+                    <p class="small muted">{step.description}</p>
+                  </section>
+                ))}
+              </div>
+            )}
+            {project.releaseNote && <p class="release-note small muted">{project.releaseNote}</p>}
+            {project.url && (
+              <p class="project-link small">
+                <a href={project.url} target={/^https?:\/\//.test(project.url) ? '_blank' : undefined} rel="noopener noreferrer">
+                  {project.linkLabel ?? projectPage.visit} <span aria-hidden="true">↗</span>
+                </a>
+              </p>
+            )}
+          </div>
+        </li>
+      ))}
+    </ol>
+  ) : (
+    <div class="empty">
+      <span class="empty-mark" aria-hidden="true">01</span>
+      <div>
+        <h2>{projectPage.emptyTitle}</h2>
+        <p class="muted">{projectPage.emptyText}</p>
+      </div>
+    </div>
+  )}
+
+  <ul class="page-links small">
+    <li><a href={profile.github} target="_blank" rel="me noopener noreferrer">{projectPage.github} <span aria-hidden="true">↗</span></a></li>
+    <li><a href="/">{projectPage.home} <span aria-hidden="true">↗</span></a></li>
+  </ul>
+</Writing>
+
+<style>
+  .projects, .empty { margin-top: clamp(3rem, 7vw, 5rem); border-top: 1px solid var(--hair); }
+  .projects > li, .empty {
+    display: grid;
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+    gap: 1.5rem;
+    padding-block: 2.5rem;
+    border-bottom: 1px solid var(--hair);
+  }
+  .number, .empty-mark { font-family: var(--display); color: var(--accent); }
+  .number { padding-top: 0.35rem; font-size: 0.7rem; }
+  .empty-mark { font-size: 1.25rem; }
+  .projects > li { scroll-margin-top: var(--header-offset); }
+  .project-eyebrow { margin-bottom: 0.7rem; color: var(--muted); font-size: 0.6rem; }
+  .featured .project-eyebrow { color: var(--accent); }
+  h2 { font-size: 1.35rem; font-weight: 500; line-height: 1.4; }
+  h2 + p { margin-top: 0.65rem; }
+  .featured .project-summary { font-size: 1.15rem; max-width: 44ch; }
+  .project-story { max-width: 65ch; margin-top: 1.5rem; }
+  .project-story p + p { margin-top: 1rem; }
+  .workflow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; margin-top: 2rem; }
+  .workflow h3 { font-size: 1rem; font-weight: 500; margin-bottom: 0.5rem; }
+  .release-note { margin-top: 1.75rem; padding-left: 1rem; border-left: 1px solid var(--accent); }
+  .project-link { margin-top: 1rem; }
+  .page-links { display: flex; flex-wrap: wrap; gap: 0.75rem 2rem; margin-top: 2.5rem; }
+  @media (max-width: 560px) {
+    .projects > li { grid-template-columns: 2rem minmax(0, 1fr); gap: 0.8rem; }
+    .workflow { grid-template-columns: 1fr; gap: 1.25rem; margin-top: 1.5rem; }
+    .empty { grid-template-columns: 1fr; gap: 1rem; }
+  }
+</style>

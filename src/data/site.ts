@@ -10,7 +10,7 @@
 export const profile = {
   name: 'Domonkos Haffner',
   role: 'Physicist and founding AI architect',
-  headline: 'I build the systems that generate the training data computer vision is missing.',
+  headline: 'From the training data machines are missing to understanding what robots actually did, I build the systems in between.',
   description:
     'Domonkos Haffner is a physicist and founding AI architect working on robotics, generative AI, and synthetic data. Based in Salzburg.',
   linkedin: 'https://www.linkedin.com/in/domonkos-haffner-798063203/',
@@ -34,13 +34,14 @@ export const sections = [
   { id: 'work', title: 'Work', href: '/#work' },
   { id: 'background', title: 'Background', href: '/#background' },
   { id: 'blog', title: 'Blog', href: '/blog/' },
+  { id: 'projects', title: 'Projects', href: '/projects/' },
   { id: 'books', title: 'Books', href: '/books/' },
   { id: 'contact', title: 'Contact', href: '/#contact' },
 ];
 
 export const now = [
   'My current work at Atomic Skills Industries by DiffuseDrive is in robotics: building systems that help us understand what a robot actually did, where it struggled, and how its behaviour changes. It brings together simulation, sensor data, and machine learning to make robot behaviour easier to interpret and evaluate.',
-  'Before that, I was the principal architect of ATLAS, our self-serve, air-gapped synthetic-data platform. I built the core pipelines for domain and instance adaptation, captioning, and quality control. The thread through both is the same: turning research into systems that hold up outside a demonstration.',
+  'Before that, I was the principal architect of ATLAS, our self-serve, air-gapped synthetic-data platform. I built the core pipelines for domain and instance adaptation, captioning, and quality control. That included work for a leading U.S. defense prime.',
 ];
 
 export const portrait = {
@@ -62,7 +63,8 @@ export const labels = {
   github: 'GitHub',
   menu: 'Menu',
   experience: 'Experience',
-  research: 'Research',
+  research: 'Research & studies',
+  press: 'In the press',
   talks: 'Talks',
   education: 'Education',
   skills: 'Skills',
@@ -72,24 +74,83 @@ export const navigation = sections.map(({ id, title, href }) => ({
   section: id, title, href,
 }));
 
-export const projectSection = {
+export const projectPage = {
   title: 'Projects',
-  intro: 'A place for the things I build, explore, and experiment with.',
-  empty: 'Project write-ups are on the way.',
-  visit: 'Explore project',
+  eyebrow: 'From the workbench',
+  description: 'A growing collection of personal projects I’ve really enjoyed building, inspired by everyday life and curiosity.',
+  homeDescription: 'Personal projects I’ve really enjoyed building, from skating and sensing to a macro tracker I used for years.',
+  emptyTitle: 'Selected projects coming soon.',
+  emptyText: 'A closer look at the code, ideas, and details behind the things I build.',
+  visit: 'View project',
+  browse: 'Explore projects',
+  github: 'Explore my GitHub',
+  home: 'Back to the homepage',
 };
 
 export interface Project {
+  id: string;
   title: string;
+  eyebrow?: string;
+  featured?: boolean;
   summary: string;
+  story?: string[];
+  workflow?: { title: string; description: string }[];
+  releaseNote?: string;
   url?: string;
+  linkLabel?: string;
   /** Only explicitly public projects appear on the website. */
   public: boolean;
 }
 
-// Add selected projects here when their descriptions are ready to share.
-// Private project notes belong in .local/, which is never published.
-export const projects: Project[] = [];
+// Only public descriptions belong here. Private project notes and recorded
+// location data stay outside the website and its source repository.
+export const projects: Project[] = [
+  {
+    id: 'smoothskate',
+    title: 'SmoothSkate',
+    eyebrow: 'Featured personal project',
+    featured: true,
+    summary: 'Predicting road surface smoothness from accelerometer and gyroscope data.',
+    story: [
+      'Skating is how I get around, exercise, and unwind. Over time, I’ve built a detailed mental map of Budapest and Salzburg: the smooth stretches, the rough ones, and the routes I keep coming back to. SmoothSkate began as a way to turn that map into data.',
+      'I started with an iPhone app to record GPS routes and rate surfaces from 1 to 3, with 3 being the smoothest, using voice or a tap. My wife suggested adding an inertial measurement unit to the skate so I could learn to predict those ratings from accelerometer and gyroscope recordings.',
+    ],
+    workflow: [
+      {
+        title: 'From recordings to predictions',
+        description: 'Capsule Studio, the Mac app, aligns the recordings and annotations for inspection. I then engineer features and train temporal convolutional networks to predict surface smoothness.',
+      },
+      {
+        title: 'Accounting for how I skate',
+        description: 'The sensor also picks up my pushes, speed, and technique. I’m collecting data at different speeds and with different skating styles to help the model separate those effects from the surface.',
+      },
+    ],
+    releaseNote: 'Actively collecting training data and experimenting with networks. I plan to open-source the full project soon, including the iPhone app, sensor firmware, Mac app, and machine-learning tools, once I’m happy with the prediction quality.',
+    public: true,
+  },
+  {
+    id: 'macro-app',
+    title: 'Macro App',
+    eyebrow: 'Personal nutrition tracker',
+    summary: 'A Google Sheets food log turned into daily calorie and macro summaries.',
+    story: [
+      'I built this during university to track my macros through bulking and cutting phases. Paying for a subscription felt unnecessary when I could write the tool myself. It was simple, but useful enough that I kept using it for years.',
+      'Over time, I built up a sizeable reference table of shop-bought foods and my own recipes, recording protein, carbohydrates, fat, fibre, and sugar. A Python notebook reads the meals logged in Google Sheets and turns them into a daily table of calories and macros.',
+    ],
+    url: 'https://github.com/domonkoshaffner/macro-app',
+    linkLabel: 'View source on GitHub',
+    public: true,
+  },
+  {
+    id: 'cityskate',
+    title: 'CitySkate',
+    eyebrow: 'Skating films',
+    summary: 'Short skating films I’ve made around Budapest and Austria.',
+    url: 'https://www.youtube.com/@cityskate3106/videos',
+    linkLabel: 'Watch on YouTube',
+    public: true,
+  },
+];
 
 export interface Experience {
   dates: string;
@@ -120,10 +181,10 @@ export const experience: Experience[] = [
     org: 'DiffuseDrive, San Francisco (working from Salzburg)',
     focus: 'ATLAS · Synthetic data',
     summary:
-      'Principal architect of the ATLAS synthetic-data platform and its core generative pipelines. Final design authority for the AI domain.',
+      'Joined as a founding generative AI engineer; appointed AI Architect in March 2026, with final design authority for the AI domain. Principal architect of the ATLAS synthetic-data platform and its core generative pipelines.',
     highlights: [
       'Built domain and instance adaptation, captioning, and quality-control pipelines for sensor-matched training data.',
-      'Integrated and fine-tuned diffusion models, and developed reusable training, generation, and data-curation workflows.',
+      'Architected the platform’s model layer so successive frontier image-generation models could be swapped in without rebuilding the product, and re-engineered them to run entirely offline in air-gapped networks.',
       'Led technical direction, engineering reviews, and mentoring while delivering a self-serve platform for air-gapped environments.',
     ],
   },
@@ -176,6 +237,14 @@ export interface Publication {
 
 export const publications: Publication[] = [
   {
+    title: 'How can GenAI and synthetic data 4X Computer Vision performance?',
+    authors: 'Co-authored with the DiffuseDrive team',
+    venue: 'Industry case study',
+    year: 2024,
+    url: 'https://diffusedrive.com/blog/how-can-genai-and-synthetic-data-4x-computer-vision-performance#hero',
+    note: 'A comparison of real, synthetic, and mixed training data for aerial object detection with YOLOv5.',
+  },
+  {
     title: 'Localization of Scattering Objects Using Neural Networks',
     authors: 'Domonkos Haffner and Ferenc Izsák',
     venue: 'Sensors 21(1), 11',
@@ -195,6 +264,35 @@ export const publications: Publication[] = [
 export const researchProfiles = [
   { title: 'Google Scholar', url: 'https://scholar.google.com/citations?user=pZQRhckAAAAJ&hl=en' },
   { title: 'OpenReview', url: 'https://openreview.net/profile?id=%7EDomonkos_Haffner1' },
+];
+
+export interface PressArticle {
+  title: string;
+  publisher: string;
+  kind: string;
+  /** Publication date in YYYY-MM-DD format. */
+  date: string;
+  summary: string;
+  url: string;
+}
+
+export const pressArticles: PressArticle[] = [
+  {
+    title: 'The Future of Physical AI Won’t Be Built on More Data, but Better Data',
+    publisher: 'Startup Kitchen',
+    kind: 'Interview',
+    date: '2026-09-22',
+    summary: 'A conversation about my work on targeted synthetic data, rigorous evaluation, and building reliable AI systems.',
+    url: 'https://startupkitchen.community/the-future-of-physical-ai/',
+  },
+  {
+    title: 'The New Infrastructure Behind Physical AI',
+    publisher: 'Startup Kitchen',
+    kind: 'Team feature',
+    date: '2026-09-14',
+    summary: 'Inside the DiffuseDrive engineering team’s work on controllable generation, AI architecture, and secure deployment.',
+    url: 'https://startupkitchen.community/the-new-infrastructure-behind-physical-ai-meet-the-engineers-building-synthetic-data-for-mission-critical-machines/',
+  },
 ];
 
 export interface Talk {
@@ -232,11 +330,20 @@ export interface Recognition {
   year: string;
   title: string;
   org: string;
+  note?: string;
+  url?: string;
   /** Set to false to keep an item out of the build. */
   public?: boolean;
 }
 
 export const recognition: Recognition[] = [
+  {
+    year: '2026',
+    title: 'Judge, CES Innovation Awards 2027',
+    org: 'Consumer Technology Association',
+    note: '14 products evaluated',
+    url: 'https://cta.secure-platform.com/ces-judging-application/gallery?roundId=82014',
+  },
   {
     year: '2020',
     title: 'Morgan Stanley special prize for the most innovative research',
@@ -263,7 +370,7 @@ export const affiliations = [
 
 export const skills = [
   { group: 'Generative AI', items: ['Diffusion models', 'LoRA and DreamBooth', 'domain adaptation', 'synthetic-data pipelines', 'language and vision-language models'] },
-  { group: 'Robotics', items: ['Isaac Sim and Isaac Lab', 'robot-behaviour annotation', 'temporal modelling', 'simulation-to-real evaluation'] },
+  { group: 'Robotics', items: ['Isaac Sim and Isaac Lab', 'Newton and MuJoCo-Warp', 'vision-language-action models (GR00T)', 'VLM-as-a-judge evaluation', 'temporal segmentation (MS-TCN, ASFormer)', 'robot-behaviour annotation', 'simulation-to-real evaluation'] },
   { group: 'Computer vision', items: ['Image embeddings and retrieval', 'detection and segmentation', 'CLIP', 'DINO', 'SAM', 'YOLO'] },
   { group: 'ML engineering', items: ['PyTorch', 'Hugging Face Diffusers and Transformers', 'Hydra', 'training and evaluation pipelines', 'data curation'] },
   { group: 'Production', items: ['Azure ML', 'AWS', 'Palantir Foundry', 'Docker', 'Terraform', 'air-gapped deployment'] },
@@ -277,15 +384,15 @@ export const contact =
 
 export const blog = {
   title: 'Blog',
-  eyebrow: 'Notes from the workbench',
-  description: 'Personal thoughts, projects in progress, and things I’m learning along the way. From physics and AI to whatever else catches my curiosity.',
-  homeDescription: 'This is where I share my thoughts, projects, and things I’m learning along the way.',
-  topics: ['Thoughts', 'Projects', 'Physics', 'AI'],
+  eyebrow: 'Thoughts and questions',
+  description: 'Personal reflections on physics, superintelligence, and the ideas I’m still exploring.',
+  homeDescription: 'Thoughts on physics, superintelligence, and the questions that keep me curious.',
+  topics: ['Physics', 'Superintelligence', 'Ideas'],
   visit: 'Visit the blog',
   back: 'All posts',
   home: 'Back to the homepage',
   emptyTitle: 'First notes coming soon.',
-  emptyText: 'A place for longer thoughts, experiments, and things I’m still figuring out.',
+  emptyText: 'Essays and reflections on the questions I keep coming back to.',
   read: 'Read post',
 };
 
@@ -313,17 +420,7 @@ export interface ExternalBlogPost extends Omit<BlogPost, 'slug' | 'body'> {
 
 // Only publicly shareable posts belong here. Write private drafts in .local/;
 // public: false keeps a post out of the build, but does not hide its source.
-export const blogPosts: (BlogPost | ExternalBlogPost)[] = [
-  {
-    title: 'How can GenAI and synthetic data 4X Computer Vision performance?',
-    date: '2024-11-04',
-    summary: 'Using generative AI to fill gaps in computer vision training data. We compare real, synthetic, and mixed datasets for aerial object detection with YOLOv5, evaluating each on the same real-world validation set.',
-    public: true,
-    url: 'https://diffusedrive.com/blog/how-can-genai-and-synthetic-data-4x-computer-vision-performance#hero',
-    publication: 'DiffuseDrive · Co-authored study',
-    readLabel: 'Read on DiffuseDrive',
-  },
-];
+export const blogPosts: (BlogPost | ExternalBlogPost)[] = [];
 
 export const publishedPosts = blogPosts
   .filter((post) => post.public === true)
