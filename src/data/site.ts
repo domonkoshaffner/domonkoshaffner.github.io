@@ -129,6 +129,18 @@ export const projects: Project[] = [
     public: true,
   },
   {
+    id: 'go-value-network',
+    title: '9×9 Go Value Network',
+    eyebrow: 'Work in progress',
+    summary: 'An AlphaGo-style project on 9×9 Go, starting with a network that predicts the winner from a board position.',
+    story: [
+      'I play Go, and AlphaGo’s win over Lee Sedol in 2016 is a big part of why I got into neural networks. This project rebuilds its core ideas on a 9×9 board, one stage at a time: a value network trained on human games first, then self-play, then tree search.',
+      'The first stage is done. I streamed 12.2 million online games into a compact dataset, filtered them down to 146,000 even, ranked games between stronger players, and trained a small ResNet that estimates who will win from any board position.',
+    ],
+    releaseNote: 'Results and source code are coming soon. Next up: self-play, then Monte Carlo tree search.',
+    public: true,
+  },
+  {
     id: 'macro-app',
     title: 'Macro App',
     eyebrow: 'Personal nutrition tracker',
