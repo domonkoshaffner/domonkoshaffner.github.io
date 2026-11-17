@@ -20,6 +20,12 @@ import { blackHole, profile } from '../data/site';
   </div>
 </section>
 
+<script>
+  import { holdViewportSize } from '../lib/holdViewportSize';
+  const hero = document.querySelector<HTMLElement>('.hero');
+  if (hero) holdViewportSize(hero, ['min-height']);
+</script>
+
 <style>
   .hero {
     position: relative;

@@ -7,6 +7,11 @@
  * right now. On phones the address bar slides away on the first scroll down;
  * a layer sized to the current viewport is stretched frame by frame while that
  * happens and then redrawn, which makes the stars slide and pop.
+ *
+ * Some phone browsers (Chrome on iOS) resize the page with their toolbars, so
+ * even `lvh` changes during a scroll. Two things keep the stars still there:
+ * the layer never gets shorter at a given width, and stars are placed band by
+ * band from the top, so extra height only adds sky underneath.
  */
 ---
 
@@ -33,6 +38,7 @@
       const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
       return x - Math.floor(x);
     }
+    const BAND = 240;
     let drawn = '';
     function draw() {
       if (!ctx) return;
@@ -42,27 +48,42 @@
       const size = `${w}:${h}:${dpr}`;
       if (!w || !h || size === drawn) return;
       drawn = size;
+      // Hold this height until the width changes, so toolbars that come back
+      // do not shrink the layer and start another round of redraws.
+      canvas.style.minHeight = `${h}px`;
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
-      const count = Math.round((w * h) / 4200);
-      for (let i = 0; i < count; i++) {
-        const x = hash(i * 3 + 1) * w;
-        const y = hash(i * 3 + 2) * h;
-        const s = hash(i * 3 + 3);
-        const r = s < 0.85 ? 0.6 : s < 0.97 ? 1.0 : 1.5;
-        const a = 0.18 + 0.5 * hash(i * 7 + 5);
-        const warm = hash(i * 11 + 9) > 0.7;
-        ctx.fillStyle = warm ? `rgba(255, 228, 190, ${a})` : `rgba(200, 216, 245, ${a})`;
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fill();
+      // One star per 4200 px², placed band by band: a star's position depends
+      // on its band and the width, never on how tall the layer is.
+      const perBand = Math.round((w * BAND) / 4200);
+      for (let band = 0; band * BAND < h; band++) {
+        for (let j = 0; j < perBand; j++) {
+          const i = band * 1009 + j;
+          const x = hash(i * 3 + 1) * w;
+          const y = (band + hash(i * 3 + 2)) * BAND;
+          const s = hash(i * 3 + 3);
+          const r = s < 0.85 ? 0.6 : s < 0.97 ? 1.0 : 1.5;
+          const a = 0.18 + 0.5 * hash(i * 7 + 5);
+          const warm = hash(i * 11 + 9) > 0.7;
+          ctx.fillStyle = warm ? `rgba(255, 228, 190, ${a})` : `rgba(200, 216, 245, ${a})`;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
     // Runs once the layer has its styled size and whenever that size changes,
     // before the next paint, so the stars are never shown stretched. The script
     // can start before the stylesheet applies, so there is no draw at startup.
     new ResizeObserver(draw).observe(canvas);
+    // A new width (rotation, window resize) lets the layer take its natural height again.
+    let width = innerWidth;
+    addEventListener('resize', () => {
+      if (innerWidth === width) return;
+      width = innerWidth;
+      canvas.style.minHeight = '';
+    });
   }
 </script>

@@ -21,6 +21,12 @@ const { title, description } = Astro.props;
   <Footer />
 </Base>
 
+<script>
+  import { holdViewportSize } from '../lib/holdViewportSize';
+  const page = document.querySelector<HTMLElement>('.writing');
+  if (page) holdViewportSize(page, ['padding-top', 'min-height']);
+</script>
+
 <style>
   .writing { padding-top: clamp(9rem, 18vh, 13rem); min-height: 78svh; }
   .reading-column { max-width: 760px; margin-inline: auto; }
