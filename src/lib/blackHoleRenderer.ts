@@ -34,8 +34,21 @@ export function startBlackHole(root: HTMLElement) {
   if (!context) { fail(); return () => {}; }
   const gl = context;
   // Resolve the actual CSS ground colour rather than a second shader palette.
-  const ground = getComputedStyle(root).getPropertyValue('--space').trim();
-  const groundColor = new Float32Array([1, 3, 5].map((start) => parseInt(ground.slice(start, start + 2), 16) / 255));
+  // WebKit can run this module before the stylesheets have applied. The colour
+  // is then missing; parsing it anyway sent NaN to the shader, which blackened
+  // every pixel for the rest of the visit. So the scene waits until both the
+  // palette and this component's own layout are in: without the layout its
+  // size would be wrong as well.
+  const groundColor = new Float32Array(3);
+  let styled = false;
+  function readStyle() {
+    const style = getComputedStyle(root);
+    const ground = style.getPropertyValue('--space').trim();
+    if (!ground || style.position !== 'absolute') return false;
+    const hex = /^#([0-9a-f]{6})$/i.exec(ground)?.[1];
+    if (hex) for (let i = 0; i < 3; i++) groundColor[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16) / 255;
+    return styled = true;
+  }
   const hotSpots = createHotspotState();
   const bloomCadence = createBloomCadence();
   // Start each visit in motion; Pause applies to the current visit only.
@@ -151,6 +164,8 @@ export function startBlackHole(root: HTMLElement) {
 
   function resize() {
     if (!ready || lost || disposed) return;
+    // Not styled yet: the frame loop and the resize observer both try again.
+    if (!styled && !readStyle()) return;
     const rect = root.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -218,6 +233,13 @@ export function startBlackHole(root: HTMLElement) {
       root.dataset.motionTime = time.toFixed(4);
     }
     draw();
+  }
+
+  function rebuild() {
+    try { resize(); } catch (error) {
+      ready = false; sleep(); release(); fail();
+      console.error('[blackhole] resize failed:', error);
+    }
   }
 
   function bindLight(pass: Pass) {
@@ -294,6 +316,8 @@ export function startBlackHole(root: HTMLElement) {
     last = now;
     time += Math.min(elapsed, 100) / 1000;
     bloomCadence.sample(elapsed);
+    // No scene yet: the stylesheets had not applied the last time it was tried.
+    if (!scene) rebuild();
     draw();
     if (import.meta.env.DEV && elapsed > 0) {
       samples.push(elapsed);
@@ -393,12 +417,7 @@ export function startBlackHole(root: HTMLElement) {
   function contextRestored() { void initialize(); }
   const resizeObserver = new ResizeObserver(() => {
     clearTimeout(resizeTimer);
-    resizeTimer = window.setTimeout(() => {
-      try { resize(); } catch (error) {
-        ready = false; sleep(); release(); fail();
-        console.error('[blackhole] resize failed:', error);
-      }
-    }, 120);
+    resizeTimer = window.setTimeout(rebuild, 120);
   });
   resizeObserver.observe(root);
   const intersectionObserver = new IntersectionObserver(([entry]) => {
