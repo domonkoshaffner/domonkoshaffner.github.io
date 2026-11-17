@@ -1,7 +1,12 @@
 ---
 /**
  * Still star field fixed behind the page, so the sections below the hero stay
- * in space. Drawn once per resize; no animation.
+ * in space. Drawn once per size; no animation.
+ *
+ * The layer is as tall as the viewport can get (`lvh`), not as tall as it is
+ * right now. On phones the address bar slides away on the first scroll down;
+ * a layer sized to the current viewport is stretched frame by frame while that
+ * happens and then redrawn, which makes the stars slide and pop.
  */
 ---
 
@@ -10,10 +15,12 @@
 <style>
   .starfield {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
     z-index: -1;
     width: 100%;
-    height: 100%;
+    height: 100vh;
+    height: 100lvh;
     pointer-events: none;
   }
 </style>
@@ -26,10 +33,15 @@
       const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
       return x - Math.floor(x);
     }
+    let drawn = '';
     function draw() {
       if (!ctx) return;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const w = window.innerWidth, h = window.innerHeight;
+      // Measure the layer, not the window: its size ignores the address bar.
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      const size = `${w}:${h}:${dpr}`;
+      if (!w || !h || size === drawn) return;
+      drawn = size;
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -48,8 +60,9 @@
         ctx.fill();
       }
     }
-    draw();
-    let t = 0;
-    addEventListener('resize', () => { clearTimeout(t); t = setTimeout(draw, 120) as unknown as number; });
+    // Runs once the layer has its styled size and whenever that size changes,
+    // before the next paint, so the stars are never shown stretched. The script
+    // can start before the stylesheet applies, so there is no draw at startup.
+    new ResizeObserver(draw).observe(canvas);
   }
 </script>
