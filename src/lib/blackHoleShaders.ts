@@ -357,6 +357,10 @@ const diskLight = `
   uniform sampler2D uPlasma;
   uniform vec4 uHotSpots[2];
   uniform vec2 uHotSpotWidths[2];
+  // A tidal disruption feeds the disk: radius, angle, shear, strength; then
+  // radial width and angular concentration. Strength is zero between events.
+  uniform vec4 uWave;
+  uniform vec2 uWaveShape;
 
   float localHeating(float r, float phi, vec2 radialDerivative, vec2 angularDerivative) {
     float heat = 0.0;
@@ -444,6 +448,16 @@ const diskLight = `
     float energy = field.g * field.g * 14.0;
     col = mix(col, vec3(1.0, 0.85, 0.52), clamp(heat * 0.55, 0.0, 0.65));
     energy += heat * (0.40 + 1.90 * energy);
+    if (uWave.w > 0.0) {
+      // A ring of heat moving inward, brightest where the stream landed. The
+      // angular profile is periodic, so the ring closes without a seam. It only
+      // multiplies what is there: strands flare and the lanes between stay dark.
+      float dr = (r - uWave.x) / uWaveShape.x;
+      float surge = uWave.w * exp(-0.5 * dr * dr)
+        * exp(uWaveShape.y * (cos(phi - uWave.y - uWave.z * (r - uWave.x)) - 1.0));
+      col = mix(col, vec3(1.0, 0.78, 0.42), clamp(surge * 0.30, 0.0, 0.5));
+      energy *= 1.0 + 2.4 * surge;
+    }
     return col * beam * profile * energy * weight;
   }
 

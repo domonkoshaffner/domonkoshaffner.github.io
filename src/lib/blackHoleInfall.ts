@@ -1,7 +1,12 @@
+import { streamPoint, streamPresence, type createDisruptionState } from './blackHoleDisruption';
+
 /** A visual clockwise flow, measured in apparent shadow radii (not a GR simulation). */
 const RATE = 4.8;
 const PITCH = 2.2;
 const SEGMENTS = 26;
+const STREAM_SEGMENTS = 128;
+const STREAM_FINE = 320;
+type Stream = ReturnType<typeof createDisruptionState>['stream'];
 const TAU = Math.PI * 2;
 const NORMAL = 1 / Math.hypot(1, PITCH);
 
@@ -125,8 +130,8 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
     tail: RATE * (0.3 + hash(i + 520) * 0.85),
     warm: hash(i + 700) > 0.8,
   }));
-  const vertices = new Float32Array(stars.length * ((SEGMENTS + 1) * 2 + 4) * 10);
-  const indices = new Uint16Array(stars.length * (SEGMENTS + 1) * 6);
+  const vertices = new Float32Array((stars.length * ((SEGMENTS + 1) * 2 + 4) + (STREAM_SEGMENTS + 1) * 2 + 4) * 10);
+  const indices = new Uint16Array((stars.length * (SEGMENTS + 1) + STREAM_SEGMENTS + 1) * 6);
   gl.bindVertexArray(vao);
   gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, vertices.byteLength, gl.DYNAMIC_DRAW);
@@ -138,6 +143,9 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
   }
   gl.bindVertexArray(null);
   let vertexCount = 0, indexCount = 0;
+  // x, y and radius along the disrupted star's stream: finely sampled, then evenly spaced.
+  const fine = new Float32Array((STREAM_FINE + 1) * 3), fineLength = new Float32Array(STREAM_FINE + 1);
+  const path = new Float32Array((STREAM_SEGMENTS + 1) * 3);
   function addVertex(x: number, y: number, lx: number, ly: number, radius: number,
     kind: number, green: number, blue: number, alpha: number) {
     const at = vertexCount++ * 10;
@@ -155,7 +163,7 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
     resize(w: number, h: number, x: number, y: number, radius: number) {
       width = w; height = h; cx = x; cy = y; horizon = radius;
     },
-    draw(time: number) {
+    draw(time: number, stream?: Stream) {
       vertexCount = 0; indexCount = 0;
       const count = width < 720 ? 65 : stars.length;
       for (let i = 0; i < count; i++) {
@@ -204,6 +212,62 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
           addVertex(x + extent, y - extent, extent, -extent, radius, -1 - heat, green, blue, alpha);
           addVertex(x - extent, y + extent, -extent, extent, radius, -1 - heat, green, blue, alpha);
           addVertex(x + extent, y + extent, extent, extent, radius, -1 - heat, green, blue, alpha);
+          quad(at, at + 1, at + 2, at + 3);
+        }
+      }
+      if (stream?.active) {
+        // The disrupted star: one long ribbon along its own path, brightest at
+        // the leading end, dissolving where it enters the disk.
+        const { edgeAngle, headSquared, span, first, stretch, brightness } = stream;
+        const heat = 0.4 + 1.0 * stretch;
+        const thickness = 1.6 - 0.8 * stretch;
+        // Sample the path finely, then place the ribbon's points at equal steps
+        // of length: curved stretches get as many points as straight ones, and
+        // the taper is even along what is seen.
+        for (let i = 0; i <= STREAM_FINE; i++) {
+          const point = streamPoint(edgeAngle, headSquared + span * (first + (1 - first) * i / STREAM_FINE));
+          fine[i * 3] = cx + Math.cos(point.angle) * point.radius * horizon;
+          fine[i * 3 + 1] = cy + Math.sin(point.angle) * point.radius * horizon;
+          fine[i * 3 + 2] = point.radius;
+          fineLength[i] = i === 0 ? 0 : fineLength[i - 1]
+            + Math.hypot(fine[i * 3] - fine[i * 3 - 3], fine[i * 3 + 1] - fine[i * 3 - 2]);
+        }
+        const total = fineLength[STREAM_FINE];
+        for (let j = 0, k = 0; j <= STREAM_SEGMENTS; j++) {
+          const target = total * j / STREAM_SEGMENTS;
+          while (k < STREAM_FINE - 1 && fineLength[k + 1] < target) k++;
+          const step = fineLength[k + 1] - fineLength[k];
+          const mix = step > 0 ? Math.min(1, (target - fineLength[k]) / step) : 0;
+          for (let c = 0; c < 3; c++) path[j * 3 + c] = fine[k * 3 + c] + (fine[k * 3 + 3 + c] - fine[k * 3 + c]) * mix;
+        }
+        for (let j = 0; j <= STREAM_SEGMENTS; j++) {
+          const along = j / STREAM_SEGMENTS;
+          const before = Math.max(0, j - 1) * 3, after = Math.min(STREAM_SEGMENTS, j + 1) * 3;
+          const tx = path[after] - path[before], ty = path[after + 1] - path[before + 1];
+          const length = Math.hypot(tx, ty) || 1;
+          const nx = -ty / length, ny = tx / length;
+          const x = path[j * 3], y = path[j * 3 + 1];
+          const presence = streamPresence(path[j * 3 + 2]);
+          const half = thickness * (1 - along) ** 0.7 + 0.25;
+          const extent = half + 2 + heat * 5;
+          // White-hot while it is a star, the disk's own orange as it is absorbed.
+          const green = 0.60 + 0.36 * presence, blue = 0.26 + 0.70 * presence * (1 - 0.35 * stretch);
+          const alpha = brightness * presence * (0.25 + 0.75 * (1 - along) ** 1.5) * (1 - along) ** 0.6;
+          const at = vertexCount;
+          addVertex(x + nx * extent, y + ny * extent, extent, 0, half, heat, green, blue, alpha);
+          addVertex(x - nx * extent, y - ny * extent, -extent, 0, half, heat, green, blue, alpha);
+          if (j > 0) quad(at - 2, at - 1, at, at + 1);
+        }
+        if (first === 0) {
+          const x = path[0], y = path[1];
+          const radius = 1.9 - 0.9 * stretch;
+          const extent = radius + 2 + heat * 5;
+          const alpha = brightness * streamPresence(path[2]);
+          const at = vertexCount;
+          addVertex(x - extent, y - extent, -extent, -extent, radius, -1 - heat, 0.96, 0.96, alpha);
+          addVertex(x + extent, y - extent, extent, -extent, radius, -1 - heat, 0.96, 0.96, alpha);
+          addVertex(x - extent, y + extent, -extent, extent, radius, -1 - heat, 0.96, 0.96, alpha);
+          addVertex(x + extent, y + extent, extent, extent, radius, -1 - heat, 0.96, 0.96, alpha);
           quad(at, at + 1, at + 2, at + 3);
         }
       }

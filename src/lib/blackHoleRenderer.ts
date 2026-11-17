@@ -1,5 +1,6 @@
 import { createInfallRenderer } from './blackHoleInfall';
 import { createHotspotState } from './blackHoleHotspots';
+import { createDisruptionState } from './blackHoleDisruption';
 import { createBloomCadence } from './blackHolePerformance';
 import {
   vertexShader, geometryShader, skyFilterShader, materialShader, compositeShader, bloomSourceShader, bloomBlurShader,
@@ -50,11 +51,18 @@ export function startBlackHole(root: HTMLElement) {
     return styled = true;
   }
   const hotSpots = createHotspotState();
+  const disruption = createDisruptionState();
   const bloomCadence = createBloomCadence();
   // Start each visit in motion; Pause applies to the current visit only.
   let playing = true;
   let inView = true, ready = false, disposed = false, lost = false;
   let time = 18.0, last = 0, raf = 0, resizeTimer = 0;
+  // Local development only: open with ?t=40 to start the scene clock there.
+  if (import.meta.env.DEV) {
+    const start = Number(new URLSearchParams(location.search).get('t'));
+    if (start > 0) time = start;
+  }
+  let wideLayout = false;
   let geometry: Pass, skyFilter: Pass, material: Pass, composite: Pass, bloomSource: Pass, bloomBlur: Pass;
   let scene: Scene | null = null;
   let bloom: Bloom | null = null;
@@ -100,7 +108,7 @@ export function startBlackHole(root: HTMLElement) {
       'uRes', 'uCenter', 'uZoom', 'uTime',
       'uFirst', 'uSecond', 'uTransport', 'uBackground', 'uPlasma',
       'uSceneRes', 'uBloom', 'uSource', 'uDirection',
-      'uHotSpots[0]', 'uHotSpotWidths[0]',
+      'uHotSpots[0]', 'uHotSpotWidths[0]', 'uWave', 'uWaveShape',
       'uSpace',
     ].map((name) => [name, gl.getUniformLocation(program, name)]));
     return { program, uniforms };
@@ -195,6 +203,7 @@ export function startBlackHole(root: HTMLElement) {
     const h = Math.max(1, Math.round(rect.height * dpr * scale));
     const aspect = rect.width / rect.height;
     const wide = rect.width > 860 && aspect > 1.1;
+    wideLayout = wide;
     centerX = wide ? aspect * 0.44 : 0;
     centerY = wide ? 0.10 : 0.32;
     zoom = wide ? Math.min(1.18, aspect * 0.76) : Math.max(0.4, Math.min(0.78, 1.35 * aspect));
@@ -267,6 +276,8 @@ export function startBlackHole(root: HTMLElement) {
     gl.uniform1f(pass.uniforms.uTime, time);
     gl.uniform4fv(pass.uniforms['uHotSpots[0]'], hotSpots.parameters);
     gl.uniform2fv(pass.uniforms['uHotSpotWidths[0]'], hotSpots.widths);
+    gl.uniform4fv(pass.uniforms.uWave, disruption.wave);
+    gl.uniform2fv(pass.uniforms.uWaveShape, disruption.waveShape);
   }
 
   function drawBloom() {
@@ -296,6 +307,7 @@ export function startBlackHole(root: HTMLElement) {
     if (!scene || !ready || lost || disposed) return;
     const began = import.meta.env.DEV ? performance.now() : 0;
     hotSpots.update(time);
+    disruption.update(time, wideLayout);
     if (timer && gpuQuery && gl.getQueryParameter(gpuQuery, gl.QUERY_RESULT_AVAILABLE)) {
       if (!gl.getParameter(timer.GPU_DISJOINT_EXT)) gpuMs = gl.getQueryParameter(gpuQuery, gl.QUERY_RESULT) / 1e6;
       gl.deleteQuery(gpuQuery); gpuQuery = null;
@@ -317,7 +329,7 @@ export function startBlackHole(root: HTMLElement) {
     gl.uniform1i(composite.uniforms.uBloom, 5);
     gl.uniform3fv(composite.uniforms.uSpace, groundColor);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    infall?.draw(time);
+    infall?.draw(time, disruption.stream);
     if (measure && timer) gl.endQuery(timer.TIME_ELAPSED_EXT);
     if (import.meta.env.DEV) {
       draws++;
