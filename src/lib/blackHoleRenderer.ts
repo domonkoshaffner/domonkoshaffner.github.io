@@ -240,7 +240,8 @@ export function startBlackHole(root: HTMLElement) {
     const bw = Math.max(1, Math.ceil(Math.min(w, rect.width) / 2));
     const bh = Math.max(1, Math.ceil(Math.min(h, rect.height) / 2));
     const glowTextures = Array.from({ length: 2 }, () => {
-      const tex = texture(bw, bh, true);
+      // Ten bits where available: the glow's long tails are slow gradients too.
+      const tex = texture(bw, bh, true, skyFormat);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       const anisotropy = gl.getExtension('EXT_texture_filter_anisotropic');

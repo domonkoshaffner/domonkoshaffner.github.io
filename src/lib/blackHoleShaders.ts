@@ -524,6 +524,17 @@ ${bloomEncoding}
   uniform sampler2D uBloom;
   uniform vec3 uSpace;
   out vec4 color;
+  // The ring's apparent outline, in shadow radii: where its light ends, and how
+  // far below the hole its centre sits.
+  const float RING_EDGE = 3.7;
+  const float RING_DROP = 0.12;
+  // The fade the page applies to the hero towards its bottom edge. This mirrors
+  // the mask on .bh in BlackHole.astro: change the two together.
+  float pageFade(float fromTop) {
+    if (fromTop <= 0.65) return 1.0;
+    if (fromTop <= 0.84) return 1.0 - (fromTop - 0.65) / 0.19 * 0.42;
+    return max(0.58 * (1.0 - (fromTop - 0.84) / 0.16), 0.0);
+  }
   void main() {
     ivec2 pixel = ivec2(gl_FragCoord.xy);
     vec4 first = texelFetch(uFirst, pixel, 0);
@@ -560,6 +571,36 @@ ${bloomEncoding}
     vec3 glow = decodeGlow(textureLod(uBloom, screen, 0.0).rgb) * 0.30
       + decodeGlow(textureLod(uBloom, screen, 2.0).rgb) * 0.18
       + decodeGlow(textureLod(uBloom, screen, 4.0).rgb) * 0.08;
+    // At the ring's outer edge the disk lights the space around it: a halo that
+    // begins where the ring ends and fades outward, exactly as bright as the
+    // whole disk is at this moment, so it swells when a star feeds the disk.
+    // Nothing is added over the body of the disk, which keeps its own contrast
+    // and colour. Sizes are in shadow radii, the same on every screen.
+    float glowRadius = radius * float(textureSize(uBloom, 0).y) * 0.5;
+    vec2 centre = (uRes + uCenter * uRes.y) * 0.5 / uRes;
+    vec3 body = decodeGlow(textureLod(uBloom, centre, log2(max(glowRadius * 7.0, 1.0))).rgb);
+    // The camera is a few degrees off the disk's axis, so the ring's outline
+    // sits a little below the hole. The halo follows the outline, not the hole.
+    vec2 fromRing = uv + vec2(0.0, RING_DROP * radius);
+    float rho = length(fromRing) / radius;
+    // A long, gentle tail: as seen it loses about two thirds of its strength
+    // per shadow radius, and a soft window takes the last of it to exactly zero
+    // three radii out. (The 2.2 is the display curve: the falloff is set for
+    // the eye, not in linear light.)
+    float beyond = max(rho - RING_EDGE, 0.0);
+    float halo = smoothstep(RING_EDGE - 0.15, RING_EDGE + 0.15, rho)
+      * exp(-2.2 * beyond / 0.9) * (1.0 - smoothstep(2.0, 3.2, beyond));
+    // The page fades the hero out towards its bottom edge, which would thin the
+    // halo below the ring. Hold it there at the strength that fade leaves the
+    // ring's own edge in the same direction, so its thickness is the same all
+    // the way round. The fade acts on displayed values, hence the power.
+    vec2 edgePoint = fromRing / max(length(fromRing), 0.0001) * RING_EDGE * radius - vec2(0.0, RING_DROP * radius);
+    float fadeAtRim = pageFade(0.5 - (edgePoint.y + uCenter.y) * 0.5);
+    float fadeHere = pageFade(1.0 - gl_FragCoord.y / uRes.y);
+    halo *= pow(fadeAtRim / max(fadeHere, 0.12), 2.2);
+    // Tinted towards the deep red of the disk's rim, so over the blue-black
+    // floor it reads as a glow, not as a grey veil.
+    glow += body * vec3(1.0, 0.42, 0.16) * 3.2 * halo;
     // Keep the shadow black and the thin blue-white ring sharply defined.
     col += glow * smoothstep(radius * 0.035, radius * 0.14, distanceFromEdge);
     col *= outside;
@@ -567,7 +608,11 @@ ${bloomEncoding}
     float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
     vec3 mappedL = col * ((1.0 - exp(-lum * 1.3)) / max(lum, 0.0001));
     vec3 mappedC = 1.0 - exp(-col * 1.3);
-    col = pow(clamp(mix(mappedL, mappedC, 0.12), 0.0, 1.0), vec3(1.0 / 2.2));
+    // Light keeps its colour. Only the very hottest cores burn through it, from
+    // orange to yellow towards white, the way hot matter does; the body of the
+    // disk is mapped exactly as before.
+    float burn = 0.12 + 0.50 * smoothstep(1.3, 3.6, lum);
+    col = pow(clamp(mix(mappedL, mappedC, burn), 0.0, 1.0), vec3(1.0 / 2.2));
     col *= clamp(1.0 - 0.25 * dot(uv * 0.6, uv * 0.6), 0.0, 1.0);
     // Keep the dense, lensed sky near the disk. Distant space reveals the
     // page's native-resolution star canvas, without wide-angle stretching.
@@ -575,12 +620,20 @@ ${bloomEncoding}
     // instead of a visible circular boundary against the quieter page sky.
     float skyFalloff = max(length(uv) / radius - 3.8, 0.0) / 3.2;
     float coverage = exp(-skyFalloff * skyFalloff);
-    // Beyond that field only light is added over the page: the cached sky was
-    // already faded there, so what remains is the galaxy band.
+    // The page's blue-black floor belongs to the dense field only. Beyond it
+    // nothing but light is added over the page: the cached sky was already faded
+    // there, so what remains is the galaxy band. The vignette shaped the light,
+    // never the floor.
     vec3 light = col;
-    // The vignette shapes the luminous scene, never the page's blue-black floor.
-    col += uSpace * (1.0 - col) * outside;
-    col = col * coverage + light * (1.0 - coverage);
+    vec3 ground = uSpace * (1.0 - light) * outside * coverage;
+    // Half a step of fixed noise hides the steps of an eight-bit canvas in slow
+    // dark gradients. It depends on the pixel alone, so a paused frame is exactly
+    // the frame that was showing. Only light is dithered: the flat floor, and
+    // light too faint to register, stay exactly as they were.
+    float grain = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) - 0.5;
+    float lit = max(light.r, max(light.g, light.b));
+    light = max(light + grain / 255.0 * smoothstep(0.4 / 255.0, 2.0 / 255.0, lit), 0.0);
+    col = light + ground;
     // Added light needs coverage on a transparent canvas: keep RGB <= alpha.
     color = vec4(col, max(coverage, max(col.r, max(col.g, col.b))));
   }
