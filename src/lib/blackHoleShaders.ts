@@ -86,6 +86,75 @@ ${common}
     return col;
   }
 
+  float fbm(vec2 p) {
+    float a = 0.5, s = 0.0;
+    for (int k = 0; k < 5; k++) {
+      s += a * vnoise(p);
+      p = p * 2.03 + vec2(17.3, 9.1);
+      a *= 0.5;
+    }
+    return s;
+  }
+
+  // The band of the galaxy. It is as fixed as the stars and is never animated.
+  // Its pattern lives in the image plane of a sight line's final direction: far
+  // from the hole it is drawn undistorted, and bent rays warp it near the hole.
+  // straight is 1 for a barely deflected ray; fine detail fades as rays bend,
+  // because strongly lensed images are too compressed to resolve it.
+  vec3 galaxy(vec3 dir, vec3 fw, vec3 rt, vec3 up, float straight) {
+    vec2 c = uZoom * vec2(dot(dir, rt), dot(dir, up)) / max(dot(dir, fw), 0.25);
+    // Wide screens: from the upper left down behind the hole. Narrow screens
+    // steepen it so it still shows past the disk.
+    float tilt = mix(0.66, 0.38, smoothstep(0.7, 1.4, uRes.x / uRes.y));
+    vec2 axis = vec2(-cos(tilt), sin(tilt));
+    float along = dot(c, axis);
+    float across = dot(c, vec2(axis.y, -axis.x));
+    float reach = 1.0 - smoothstep(0.80, 1.30, abs(across));
+    if (reach <= 0.0) return vec3(0.0);
+
+    float bulge = exp(-pow((along - 1.15) / 0.8, 2.0));
+    vec2 p = vec2(along, across);
+    vec2 warp = vec2(fbm(p * 1.1 + 3.1), fbm(p * 1.1 + 11.7)) - 0.5;
+    float t = across + warp.y * 0.16 + 0.05 * sin(along * 1.7 + 0.6);
+    float width = 0.22 * (1.0 + 0.5 * bulge);
+    float core = exp(-pow(t / width, 2.0));
+    float halo = exp(-pow(t / (width * 1.6), 2.0));
+    float billow = fbm(vec2(along * 1.5, t * 3.4) + warp * 1.4 + 20.0);
+    float clouds = smoothstep(0.30, 0.74, billow);
+    float knots = mix(0.5, fbm(vec2(along * 4.6, t * 8.5) + warp * 3.0 + 47.0), straight);
+    // Soft glow, patchy clouds, and a few dense star clouds that stand out.
+    float density = core * (0.16 + 1.35 * clouds * (0.45 + 1.1 * knots)
+      + 1.1 * smoothstep(0.56, 0.80, billow) * knots) + halo * 0.03;
+    density *= (0.5 + 0.8 * bulge) * reach;
+    // The dark rift: dust along the mid-line, and finer filaments beside it.
+    float rift = exp(-pow((t + 0.035) / (0.05 * (1.0 + 0.6 * bulge)), 2.0))
+      * smoothstep(0.34, 0.62, fbm(vec2(along * 2.1, t * 6.0) + warp + 71.0));
+    float filaments = smoothstep(0.52, 0.78, fbm(vec2(along * 3.3, t * 13.0) + warp * 3.2 + 133.0)) * core;
+    float dust = clamp(0.90 * rift + 0.60 * filaments * straight, 0.0, 0.94);
+    // Blue-white star clouds at the edges, a cream heart, a warmer bulge.
+    vec3 tint = mix(vec3(0.40, 0.60, 1.0), mix(vec3(0.92, 0.93, 1.0), vec3(1.0, 0.78, 0.50), bulge), core * core);
+    tint = mix(tint, tint * vec3(1.0, 0.70, 0.46), dust);
+    vec3 light = tint * density * (1.0 - dust) * 0.034;
+
+    // Unresolved stars, in two sizes: the grain that makes the glow a star field.
+    for (int layer = 0; layer < 2; layer++) {
+      float cells = layer == 0 ? 150.0 : 400.0;
+      vec2 g = c * cells + float(layer) * 37.0;
+      vec2 id = floor(g), f = fract(g), r = hash22(id + 31.7);
+      float chance = (layer == 0 ? 0.03 * core + 0.42 * density : 0.05 * core + 0.75 * density) * straight;
+      if (r.x < min(chance, 0.85)) {
+        vec2 pos = 0.2 + 0.6 * hash22(id + 5.1);
+        float pixel = cells * 2.0 / uRes.y;
+        float size2 = layer == 0 ? 0.008 + 0.03 * r.y * r.y : 0.02;
+        float width2 = size2 + pixel * pixel * 0.35;
+        float br = exp(-3.5 * dot(f - pos, f - pos) / width2) * size2 / width2;
+        vec3 starTint = mix(vec3(0.72, 0.82, 1.0), vec3(1.0, 0.88, 0.70), hash21(id + 9.4));
+        light += starTint * br * (0.2 + 0.8 * r.y * r.y) * (layer == 0 ? 0.34 : 0.10) * (1.0 - 0.85 * dust);
+      }
+    }
+    return light;
+  }
+
   vec4 hitCoordinates(vec3 p) {
     return vec4(pack16(length(p.xz) / R_OUT), pack16((atan(p.z, p.x) + PI) / TAU));
   }
@@ -114,7 +183,18 @@ ${common}
       vec2 safeUV = uv * radius / max(length(uv), 0.0001);
       rd = normalize(fw * uZoom + rt * safeUV.x + up * safeUV.y);
     }
-    vec3 sky = stars(rd);
+    // The composite shows the dense star field only near the hole. Fading it
+    // here, by the same measure, leaves the galaxy as the only sky light that
+    // reaches the far field.
+    float shadowRadius = uZoom * B_CRIT / sqrt(D * D - B_CRIT * B_CRIT);
+    float skyFalloff = max(length(uv) / shadowRadius - 3.8, 0.0) / 3.2;
+    float nearField = pow(exp(-skyFalloff * skyFalloff), 2.2);
+    // Beyond the integrated region the pull is weak, not zero. Bending the
+    // sight line by the same amount the integration would (a chord through the
+    // bounding sphere) keeps the galaxy continuous across that boundary.
+    float bend = 2.0 / impact * sqrt(max(1.0 - impact * impact / (R_BOUND * R_BOUND), 0.0));
+    vec3 farDir = rd * cos(bend) + cross(normalize(cross(ro, rd)), rd) * sin(bend);
+    vec3 sky = stars(rd) * nearField + galaxy(farDir, fw, rt, up, 1.0);
     if (impact > R_OUT + 1.0) {
       background = vec4(sqrt(clamp(sky * 0.25, 0.0, 1.0)), 1.0);
       return;
@@ -171,7 +251,11 @@ ${common}
       if (opacity > 0.985) break;
     }
     vec3 col = glow * vec3(1.0, 0.42, 0.12) * 0.07;
-    if (!captured) col += (1.0 - opacity) * stars(normalize(v));
+    if (!captured) {
+      vec3 dir = normalize(v);
+      col += (1.0 - opacity) * (stars(dir) * nearField
+        + galaxy(dir, fw, rt, up, smoothstep(0.80, 0.97, dot(dir, rd))));
+    }
     col *= edge;
     float outerBlend = smoothstep(R_OUT + 0.3, R_OUT + 1.0, impact);
     col = mix(col, sky, outerBlend);
@@ -477,8 +561,13 @@ ${bloomEncoding}
     // instead of a visible circular boundary against the quieter page sky.
     float skyFalloff = max(length(uv) / radius - 3.8, 0.0) / 3.2;
     float coverage = exp(-skyFalloff * skyFalloff);
+    // Beyond that field only light is added over the page: the cached sky was
+    // already faded there, so what remains is the galaxy band.
+    vec3 light = col;
     // The vignette shapes the luminous scene, never the page's blue-black floor.
     col += uSpace * (1.0 - col) * outside;
-    color = vec4(col * coverage, coverage);
+    col = col * coverage + light * (1.0 - coverage);
+    // Added light needs coverage on a transparent canvas: keep RGB <= alpha.
+    color = vec4(col, max(coverage, max(col.r, max(col.g, col.b))));
   }
 `;

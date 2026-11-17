@@ -61,6 +61,7 @@ export function startBlackHole(root: HTMLElement) {
   let plasma: WebGLTexture | null = null;
   let centerX = 0, centerY = 0, zoom = 1;
   let sceneKey = '', generation = 0;
+  let skyFormat: number = gl.RGBA8;
   const programs = new Set<WebGLProgram>();
   const textures = new Set<WebGLTexture>();
   const framebuffers = new Set<WebGLFramebuffer>();
@@ -105,13 +106,13 @@ export function startBlackHole(root: HTMLElement) {
     return { program, uniforms };
   }
 
-  function texture(w: number, h: number, mipmaps = false) {
+  function texture(w: number, h: number, mipmaps = false, format: number = gl.RGBA8) {
     const tex = gl.createTexture();
     if (!tex) throw new Error('Unable to allocate a texture');
     textures.add(tex);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texStorage2D(gl.TEXTURE_2D, mipmaps ? Math.floor(Math.log2(Math.max(w, h))) + 1 : 1, gl.RGBA8, w, h);
+    gl.texStorage2D(gl.TEXTURE_2D, mipmaps ? Math.floor(Math.log2(Math.max(w, h))) + 1 : 1, format, w, h);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, mipmaps ? gl.LINEAR : gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, mipmaps ? gl.REPEAT : gl.CLAMP_TO_EDGE);
@@ -122,6 +123,21 @@ export function startBlackHole(root: HTMLElement) {
         Math.min(8, gl.getParameter(anisotropy.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
     }
     return tex;
+  }
+
+  // The galaxy band is a faint, smooth gradient: at eight bits its cached sky
+  // shows contour steps, at ten it does not. Mixed formats in one target are
+  // core WebGL 2, but a driver that refuses them keeps the eight-bit sky.
+  function deepSkyFormat() {
+    const probe = [gl.RGBA8, gl.RGBA8, gl.RGBA8, gl.RGB10_A2].map((format) => texture(2, 2, false, format));
+    const framebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    probe.forEach((tex, i) => gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, tex, 0));
+    const complete = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.deleteFramebuffer(framebuffer);
+    for (const tex of probe) { gl.deleteTexture(tex); textures.delete(tex); }
+    return complete ? gl.RGB10_A2 : gl.RGBA8;
   }
 
   function target(attachments: WebGLTexture[]) {
@@ -186,7 +202,7 @@ export function startBlackHole(root: HTMLElement) {
     if (key === sceneKey) return;
     deleteScene();
     canvas.width = w; canvas.height = h;
-    const attachments = Array.from({ length: 4 }, () => texture(w, h));
+    const attachments = [texture(w, h), texture(w, h), texture(w, h), texture(w, h, false, skyFormat)];
     scene = { textures: attachments, framebuffer: target(attachments) };
     sceneKey = key;
     use(geometry);
@@ -196,7 +212,7 @@ export function startBlackHole(root: HTMLElement) {
     // Resolve near-shadow stars once into the existing cached sky slot. Keep
     // the final texture count and the per-frame rendering work unchanged.
     const rawSky = attachments[3];
-    const filteredSky = texture(w, h);
+    const filteredSky = texture(w, h, false, skyFormat);
     const skyTarget = target([filteredSky]);
     use(skyFilter);
     gl.activeTexture(gl.TEXTURE0);
@@ -393,6 +409,7 @@ export function startBlackHole(root: HTMLElement) {
       ]);
       if (disposed || lost || current !== generation) return;
       infall = createInfallRenderer(canvas, gl);
+      skyFormat = deepSkyFormat();
       const atlasSize = Math.min(ATLAS_SIZE, maxTexture);
       plasma = texture(atlasSize, atlasSize, true);
       const atlasTarget = target([plasma]);
