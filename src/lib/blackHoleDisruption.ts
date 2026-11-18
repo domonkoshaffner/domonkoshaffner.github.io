@@ -22,7 +22,7 @@ const FALL = 11;           // loss of radius² per second: faster than the ordin
 // own flow at the edge, with no corner anywhere in between.
 const PITCH_FAR = 0.45, PITCH_NEAR = 2.3, PITCH_POWER = 1.6;
 const FULL_SPAN = 70;      // length of the fully drawn-out stream, in radius²
-const WAVE_OUTER = 8.0, WAVE_INNER = 2.75;   // disk radii the heat travels between
+const WAVE_OUTER = 8.0, WAVE_INNER = 3.2;    // disk radii the heat travels between: it ends at the disk's inner edge
 
 const hash = (n: number) => {
   const value = Math.sin(n * 127.1 + 311.7) * 43758.5453;

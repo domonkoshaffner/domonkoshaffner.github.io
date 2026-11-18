@@ -11,10 +11,16 @@ const common = `
   precision highp int;
   const float PI = 3.14159265359;
   const float TAU = 6.28318530718;
-  const float R_IN = 2.6;
+  // Lengths are in Schwarzschild radii. The disk ends at the innermost stable
+  // circular orbit, three of them out: inside it nothing can orbit, matter
+  // plunges, and there is next to no light.
+  const float R_IN = 3.0;
   const float R_OUT = 9.5;
   const float B_CRIT = 2.598;
   const float D = 15.0;
+  // The exposure of the disk: set so that its bright inner band is as bright
+  // as it was before the disk was given its true inner edge and profile.
+  const float DISK_GAIN = 0.66;
   uniform vec2 uRes;
   uniform vec2 uCenter;
   uniform float uZoom;
@@ -476,7 +482,7 @@ const diskLight = `
     float r = unpack16(packedHit.rg) * R_OUT;
     float phi = unpack16(packedHit.ba) * TAU - PI;
     float flowRadius = max(r, R_IN);
-    float angularVelocity = 0.045 + 0.32 * pow(R_IN / flowRadius, 1.35);
+    float angularVelocity = 0.045 + 0.32 * pow(2.6 / flowRadius, 1.35);
     // Two staggered flows renew only while their contribution is zero. Their
     // smooth handover lets strands form and dissolve without a visible reset.
     float phaseA = fract((uTime - 18.0) / 24.0);
@@ -500,14 +506,22 @@ const diskLight = `
     // The atlas stores square-root energy. Blend in linear light so a handover
     // does not dim the entire disk halfway through its cycle.
     field.g = sqrt(mix(b.g * b.g, a.g * a.g, blend));
-    float edgeIn = smoothstep(R_IN, R_IN + 0.25, r);
     float edgeOut = 1.0 - smoothstep(R_OUT - 3.5, R_OUT, r + (field.r - 0.5) * 0.8);
-    float profile = edgeIn * edgeOut * pow(R_IN / r, 1.1);
+    // How bright a thin disk is at each radius (Shakura and Sunyaev; Novikov
+    // and Thorne). Nothing holds the matter back at the innermost stable
+    // orbit, so it gives no light there; the light rises to its greatest a
+    // little further out, at 49/36 of that radius, and from there falls away
+    // as the cube of the radius. Scaled so the greatest value is 1.
+    float x = r / R_IN;
+    float flux = (1.0 - inversesqrt(x)) / (x * x * x) * 17.65;
+    float profile = edgeOut * flux * DISK_GAIN;
     float t = clamp((r - R_IN) / (R_OUT - R_IN), 0.0, 1.0);
     vec3 hot = vec3(1.00, 0.38, 0.045);
     vec3 warm = vec3(1.00, 0.12, 0.003);
     vec3 cool = vec3(0.48, 0.025, 0.001);
     vec3 col = mix(mix(hot, warm, smoothstep(0.0, 0.38, t)), cool, smoothstep(0.35, 1.0, t));
+    // Less light is cooler matter: the innermost edge is a deeper red.
+    col = mix(col, warm, (1.0 - smoothstep(0.0, 0.8, flux)) * step(x, 1.361));
     col = mix(col, vec3(1.0, 0.64, 0.18), field.b * 0.65 * (1.0 - t));
     // A restrained pale-gold shoulder in the strongest inner filaments.
     float peak = smoothstep(1.4, 3.6, field.g * field.g * 14.0)

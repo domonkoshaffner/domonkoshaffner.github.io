@@ -247,11 +247,11 @@ test('the planets leave their matter first, then the star, all inside the disk a
     assert.ok(when < star[0], 'a planet settles before the star');
     assert.ok(when > 1 && when < OPENING_DURATION - 3);
     assert.ok(angle >= 0 && angle < Math.PI * 2);
-    assert.ok(radius > 2.6 && radius < 9.5, 'inside the disk');
+    assert.ok(radius > 3.0 && radius < 9.5, 'inside the disk');
     assert.ok(share > 0 && share < 0.5, 'a planet brings a little');
   }
   assert.equal(star[3], 1, 'the star brings the rest');
-  assert.ok(star[2] > 2.6 && star[2] < 6, 'the star settles in the inner disk, and the ring grows outward from there');
+  assert.ok(star[2] > 3.0 && star[2] < 6, 'the star settles in the inner disk, and the ring grows outward from there');
   assert.ok(star[0] + 5 < OPENING_DURATION, 'with time left for the ring to grow');
   assert.deepEqual(state.bodies.map((b) => b.kind).slice(0, 4), [PLANET, PLANET, PLANET, STAR]);
   assert.ok(state.bodies.slice(4).every((b) => b.kind === FRAGMENT));

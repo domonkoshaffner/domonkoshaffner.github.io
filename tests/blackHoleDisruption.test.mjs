@@ -43,7 +43,7 @@ test('the disk answers only after the stream lands, moves inward, and is quiet a
     firstHeat ??= age; lastHeat = age; peak = Math.max(peak, strength);
     assert.ok(state.wave[0] <= previousRadius + 1e-9, 'the wave never moves outward');
     previousRadius = state.wave[0];
-    assert.ok(state.wave[0] >= 2.6 && state.wave[0] <= 9.5, 'the wave stays inside the disk');
+    assert.ok(state.wave[0] >= 3.0 && state.wave[0] <= 9.5, 'the wave stays inside the disk');
     assert.ok(Math.abs(state.wave[1]) <= Math.PI + 1e-9);
   }
   assert.ok(firstHeat > 10, `first heat at ${firstHeat}s`);
