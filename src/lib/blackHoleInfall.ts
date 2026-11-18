@@ -1,4 +1,7 @@
 import { streamPoint, streamPresence, type createDisruptionState } from './blackHoleDisruption';
+import {
+  OPENING_BODIES, STAR, FRAGMENT, openingPoint, bodyRadius, bodyGirth, type OpeningPoint, type createOpeningState,
+} from './blackHoleOpening';
 
 /** A visual clockwise flow, measured in apparent shadow radii (not a GR simulation). */
 const RATE = 4.8;
@@ -7,10 +10,14 @@ const SEGMENTS = 26;
 const STREAM_SEGMENTS = 128;
 const STREAM_FINE = 320;
 type Stream = ReturnType<typeof createDisruptionState>['stream'];
+type Opening = ReturnType<typeof createOpeningState>;
+/** Ribbons drawn at once: the disrupted star, or every body of the opening. */
+const RIBBONS = 2 + OPENING_BODIES;
 const TAU = Math.PI * 2;
 const NORMAL = 1 / Math.hypot(1, PITCH);
 
 const clamp = (v: number) => Math.max(0, Math.min(1, v));
+const ease = (v: number) => { const x = clamp(v); return x * x * (3 - 2 * x); };
 const hash = (n: number) => {
   const v = Math.sin(n * 127.1 + 311.7) * 43758.5453;
   return v - Math.floor(v);
@@ -66,6 +73,15 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
     in vec4 vColor;
     in vec2 vCenter;
     out vec4 color;
+    float hash(vec2 p) {
+      p = fract(p * vec2(123.34, 456.21));
+      p += dot(p, p + 45.32);
+      return fract(p.x * p.y);
+    }
+    float strands(vec2 p) {
+      vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1)), u.x), u.y);
+    }
     void main() {
       bool head = vShape.y < 0.0;
       float heat = head ? -1.0 - vShape.y : vShape.y;
@@ -100,6 +116,11 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
       float spread = 0.6 + heat * 1.4;
       float glow = exp(-pow(max(0.0, distance - radius) / spread, 2.0))
         * heat * 0.22 * min(1.0, radius);
+      if (!head && vLocal.y > 0.5) {
+        // A stream of matter, not a drawn line: fine strands run along it.
+        core *= 0.70 + 0.60 * strands(vec2(vLocal.y * 0.045, vLocal.x * 1.2 + heat * 7.0));
+        glow *= 0.80 + 0.40 * strands(vec2(vLocal.y * 0.018, heat * 3.0));
+      }
       float outside = smoothstep(-pixelAA, pixelAA, length(p - uCenter) - uHorizon);
       vec3 light = vColor.rgb * core + vec3(1.0, 0.75, 0.44) * glow;
       vec3 emission = light * vColor.a * outside * arrival;
@@ -130,8 +151,8 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
     tail: RATE * (0.3 + hash(i + 520) * 0.85),
     warm: hash(i + 700) > 0.8,
   }));
-  const vertices = new Float32Array((stars.length * ((SEGMENTS + 1) * 2 + 4) + (STREAM_SEGMENTS + 1) * 2 + 4) * 10);
-  const indices = new Uint16Array((stars.length * (SEGMENTS + 1) + STREAM_SEGMENTS + 1) * 6);
+  const vertices = new Float32Array((stars.length * ((SEGMENTS + 1) * 2 + 4) + RIBBONS * ((STREAM_SEGMENTS + 1) * 2 + 4)) * 10);
+  const indices = new Uint16Array((stars.length * (SEGMENTS + 1) + RIBBONS * (STREAM_SEGMENTS + 1)) * 6);
   gl.bindVertexArray(vao);
   gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, vertices.byteLength, gl.DYNAMIC_DRAW);
@@ -143,7 +164,11 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
   }
   gl.bindVertexArray(null);
   let vertexCount = 0, indexCount = 0;
-  // x, y and radius along the disrupted star's stream: finely sampled, then evenly spaced.
+  // The red of what is being drawn: full for every light here but a stream of ice.
+  let red = 1;
+  // What a ribbon is at one point along it: half its width in pixels, and its light.
+  let half = 0, light = 0;
+  // x, y and presence along a stream: finely sampled, then evenly spaced.
   const fine = new Float32Array((STREAM_FINE + 1) * 3), fineLength = new Float32Array(STREAM_FINE + 1);
   const path = new Float32Array((STREAM_SEGMENTS + 1) * 3);
   function addVertex(x: number, y: number, lx: number, ly: number, radius: number,
@@ -152,20 +177,89 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
     vertices[at] = x; vertices[at + 1] = y;
     vertices[at + 2] = lx; vertices[at + 3] = ly;
     vertices[at + 4] = radius; vertices[at + 5] = kind;
-    vertices[at + 6] = 1; vertices[at + 7] = green; vertices[at + 8] = blue;
+    vertices[at + 6] = red; vertices[at + 7] = green; vertices[at + 8] = blue;
     vertices[at + 9] = alpha;
   }
   function quad(a: number, b: number, c: number, d: number) {
     indices[indexCount++] = a; indices[indexCount++] = b; indices[indexCount++] = c;
     indices[indexCount++] = c; indices[indexCount++] = b; indices[indexCount++] = d;
   }
+  // Lay one ribbon along the path sampled into fine (x, y, how much of the matter
+  // is still its own). Its points are placed at equal steps of length, so curved
+  // stretches get as many as straight ones and its shape is even along what is
+  // seen. The shape gives its width and light at each point, from the leading
+  // end (0) to the other (1). It takes the disk's own orange as it is absorbed.
+  function ribbon(heat: number, coolRed: number, coolGreen: number, coolBlue: number, shape: (along: number) => void) {
+    for (let i = 1; i <= STREAM_FINE; i++) {
+      fineLength[i] = fineLength[i - 1] + Math.hypot(fine[i * 3] - fine[i * 3 - 3], fine[i * 3 + 1] - fine[i * 3 - 2]);
+    }
+    const total = fineLength[STREAM_FINE];
+    for (let j = 0, k = 0; j <= STREAM_SEGMENTS; j++) {
+      const target = total * j / STREAM_SEGMENTS;
+      while (k < STREAM_FINE - 1 && fineLength[k + 1] < target) k++;
+      const step = fineLength[k + 1] - fineLength[k];
+      const mix = step > 0 ? Math.min(1, (target - fineLength[k]) / step) : 0;
+      for (let c = 0; c < 3; c++) path[j * 3 + c] = fine[k * 3 + c] + (fine[k * 3 + 3 + c] - fine[k * 3 + c]) * mix;
+    }
+    for (let j = 0; j <= STREAM_SEGMENTS; j++) {
+      const along = j / STREAM_SEGMENTS;
+      const before = Math.max(0, j - 1) * 3, after = Math.min(STREAM_SEGMENTS, j + 1) * 3;
+      const tx = path[after] - path[before], ty = path[after + 1] - path[before + 1];
+      const length = Math.hypot(tx, ty) || 1;
+      const nx = -ty / length, ny = tx / length;
+      const x = path[j * 3], y = path[j * 3 + 1], presence = path[j * 3 + 2];
+      shape(along);
+      const extent = half + 2 + heat * 5;
+      red = 1 + (coolRed - 1) * presence;
+      const green = 0.60 + (coolGreen - 0.60) * presence, blue = 0.26 + (coolBlue - 0.26) * presence;
+      const alpha = light * presence;
+      // The distance along the stream goes with each point: the shader uses it
+      // to give the stream the fine strands of flowing matter.
+      const run = 1 + total * along;
+      const at = vertexCount;
+      addVertex(x + nx * extent, y + ny * extent, extent, run, half, heat, green, blue, alpha);
+      addVertex(x - nx * extent, y - ny * extent, -extent, run, half, heat, green, blue, alpha);
+      if (j > 0) quad(at - 2, at - 1, at, at + 1);
+    }
+    red = 1;
+  }
+  // A stream led by its brightest matter: pointed at the leading end, widest
+  // just behind it, tapering to the tail.
+  const comet = (thickness: number, brightness: number) => (along: number) => {
+    half = thickness * (1 - along) ** 0.7 * ease(along / 0.035) + 0.25;
+    light = brightness * (0.25 + 0.75 * (1 - along) ** 1.5) * (1 - along) ** 0.6;
+  };
+  // A tongue of matter drawn off the near side of a body, from its leading tip
+  // back to the body: a thread in front, opening out to the body's own width
+  // where it leaves it, and fainter there, where the same matter is spread
+  // wider. As the body drains (fed falls to 0) the mouth closes, and what is
+  // left is the thread, pointed at both ends.
+  const tongue = (thread: number, mouth: number, fed: number, brightness: number) => (along: number) => {
+    // A long fine point in front, however short the tongue still is.
+    const closing = fed + (1 - fed) * ease((1 - along) / 0.2);
+    const open = fed * along ** 2.4;
+    half = (thread * (0.25 + 0.75 * ease(along / 0.45)) + Math.max(0, mouth - thread) * open) * ease(along / 0.05) * closing + 0.25;
+    light = brightness * ease(along / 0.12) * closing * (0.55 + 0.45 * (1 - along)) * (1 - 0.6 * open);
+  };
+  // A round point of light at the leading end of a ribbon.
+  function head(x: number, y: number, radius: number, heat: number, alpha: number) {
+    const extent = radius + 2 + heat * 5;
+    const at = vertexCount;
+    addVertex(x - extent, y - extent, -extent, -extent, radius, -1 - heat, 0.96, 0.96, alpha);
+    addVertex(x + extent, y - extent, extent, -extent, radius, -1 - heat, 0.96, 0.96, alpha);
+    addVertex(x - extent, y + extent, -extent, extent, radius, -1 - heat, 0.96, 0.96, alpha);
+    addVertex(x + extent, y + extent, extent, extent, radius, -1 - heat, 0.96, 0.96, alpha);
+    quad(at, at + 1, at + 2, at + 3);
+  }
+  const sample: OpeningPoint = { radius: 0, angle: 0, presence: 0 };
+
   return {
     resize(w: number, h: number, x: number, y: number, radius: number) {
       width = w; height = h; cx = x; cy = y; horizon = radius;
     },
-    draw(time: number, stream?: Stream, gain = 1) {
+    draw(time: number, stream?: Stream, gain = 1, opening?: Opening, wide = false) {
       vertexCount = 0; indexCount = 0;
-      const count = width < 720 ? 65 : stars.length;
+      const count = gain <= 0 ? 0 : width < 720 ? 65 : stars.length;
       for (let i = 0; i < count; i++) {
         const star = stars[i];
         const lifetime = (star.radius ** 2 - 1 + star.tail) / RATE;
@@ -216,59 +310,61 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
         }
       }
       if (stream?.active) {
-        // The disrupted star: one long ribbon along its own path, brightest at
-        // the leading end, dissolving where it enters the disk.
+        // The disrupted star: one long ribbon along its own path, dissolving
+        // where it enters the disk.
         const { edgeAngle, headSquared, span, first, stretch, brightness } = stream;
         const heat = 0.4 + 1.0 * stretch;
-        const thickness = 1.6 - 0.8 * stretch;
-        // Sample the path finely, then place the ribbon's points at equal steps
-        // of length: curved stretches get as many points as straight ones, and
-        // the taper is even along what is seen.
         for (let i = 0; i <= STREAM_FINE; i++) {
           const point = streamPoint(edgeAngle, headSquared + span * (first + (1 - first) * i / STREAM_FINE));
           fine[i * 3] = cx + Math.cos(point.angle) * point.radius * horizon;
           fine[i * 3 + 1] = cy + Math.sin(point.angle) * point.radius * horizon;
-          fine[i * 3 + 2] = point.radius;
-          fineLength[i] = i === 0 ? 0 : fineLength[i - 1]
-            + Math.hypot(fine[i * 3] - fine[i * 3 - 3], fine[i * 3 + 1] - fine[i * 3 - 2]);
+          fine[i * 3 + 2] = streamPresence(point.radius);
         }
-        const total = fineLength[STREAM_FINE];
-        for (let j = 0, k = 0; j <= STREAM_SEGMENTS; j++) {
-          const target = total * j / STREAM_SEGMENTS;
-          while (k < STREAM_FINE - 1 && fineLength[k + 1] < target) k++;
-          const step = fineLength[k + 1] - fineLength[k];
-          const mix = step > 0 ? Math.min(1, (target - fineLength[k]) / step) : 0;
-          for (let c = 0; c < 3; c++) path[j * 3 + c] = fine[k * 3 + c] + (fine[k * 3 + 3 + c] - fine[k * 3 + c]) * mix;
-        }
-        for (let j = 0; j <= STREAM_SEGMENTS; j++) {
-          const along = j / STREAM_SEGMENTS;
-          const before = Math.max(0, j - 1) * 3, after = Math.min(STREAM_SEGMENTS, j + 1) * 3;
-          const tx = path[after] - path[before], ty = path[after + 1] - path[before + 1];
-          const length = Math.hypot(tx, ty) || 1;
-          const nx = -ty / length, ny = tx / length;
-          const x = path[j * 3], y = path[j * 3 + 1];
-          const presence = streamPresence(path[j * 3 + 2]);
-          const half = thickness * (1 - along) ** 0.7 + 0.25;
-          const extent = half + 2 + heat * 5;
-          // White-hot while it is a star, the disk's own orange as it is absorbed.
-          const green = 0.60 + 0.36 * presence, blue = 0.26 + 0.70 * presence * (1 - 0.35 * stretch);
-          const alpha = brightness * presence * (0.25 + 0.75 * (1 - along) ** 1.5) * (1 - along) ** 0.6;
-          const at = vertexCount;
-          addVertex(x + nx * extent, y + ny * extent, extent, 0, half, heat, green, blue, alpha);
-          addVertex(x - nx * extent, y - ny * extent, -extent, 0, half, heat, green, blue, alpha);
-          if (j > 0) quad(at - 2, at - 1, at, at + 1);
-        }
-        if (first === 0) {
-          const x = path[0], y = path[1];
-          const radius = 1.9 - 0.9 * stretch;
-          const extent = radius + 2 + heat * 5;
-          const alpha = brightness * streamPresence(path[2]);
-          const at = vertexCount;
-          addVertex(x - extent, y - extent, -extent, -extent, radius, -1 - heat, 0.96, 0.96, alpha);
-          addVertex(x + extent, y - extent, extent, -extent, radius, -1 - heat, 0.96, 0.96, alpha);
-          addVertex(x - extent, y + extent, -extent, extent, radius, -1 - heat, 0.96, 0.96, alpha);
-          addVertex(x + extent, y + extent, extent, extent, radius, -1 - heat, 0.96, 0.96, alpha);
-          quad(at, at + 1, at + 2, at + 3);
+        ribbon(heat, 1, 0.96, 0.96 * (1 - 0.35 * stretch), comet(1.6 - 0.8 * stretch, brightness));
+        if (first === 0) head(fine[0], fine[1], 1.9 - 0.9 * stretch, heat, brightness * fine[2]);
+      }
+      if (opening?.active) {
+        // The opening's bodies. The tides take the near side of a planet or of
+        // the star first: its matter runs ahead along the path the body is
+        // about to take, a tongue that winds onto the body's orbit and fades
+        // as it spreads into the ring, while the body follows at its own even
+        // pace and drains into it. The small rocks lead their own streams.
+        for (let k = 0; k < opening.bodies.length; k++) {
+          const body = opening.bodies[k];
+          const rock = body.kind === FRAGMENT;
+          const size = bodyRadius(body, horizon);
+          if (body.reach > 0.01) {
+            let any = 0;
+            for (let i = 0; i <= STREAM_FINE; i++) {
+              openingPoint(k, wide, body.since - body.reach * i / STREAM_FINE, sample);
+              fine[i * 3] = cx + Math.cos(sample.angle) * sample.radius * horizon;
+              fine[i * 3 + 1] = cy + Math.sin(sample.angle) * sample.radius * horizon;
+              fine[i * 3 + 2] = sample.presence;
+              any += sample.presence;
+            }
+            if (any > 0.001) {
+              // A wisp leaves the near side first; its mouth opens as the body pours in
+              // after it, and narrows again with the body as the body is drawn fine.
+              const fed = 1 - body.drained, rise = Math.min(1, body.stretch * 6);
+              const mouth = size * bodyGirth(body) * ease(body.stretch * 1.6);
+              if (body.kind === STAR) {
+                // Glowing gas around a white-hot core.
+                ribbon(3.2, 1, 0.80, 0.52, tongue(0.5, 0.5, fed, 0.5 * rise));
+                ribbon(0.8 + 1.0 * body.stretch, 1, 0.97, 0.90, tongue(1.15, 0.9 * mouth, fed, 1.6 * rise));
+              } else if (rock) {
+                ribbon(0.6, 1, 0.94, 0.86, comet(0.7, body.look * body.stretch));
+              } else {
+                // Dust, rock and ice, each in its world's own colour: softer and dimmer than the star's.
+                const [r, g, b] = body.look === 0 ? [1, 0.78, 0.54] : body.look === 1 ? [1, 0.88, 0.66] : [0.80, 0.91, 1];
+                ribbon(1.5, r, g, b, tongue(0.7, 0.7 * mouth, fed, 0.8 * rise));
+              }
+            }
+          }
+          if (rock && body.presence > 0.001) {
+            // At rest it is one more faint point in the sky; it brightens as it falls.
+            head(cx + Math.cos(body.angle) * body.radius * horizon, cy + Math.sin(body.angle) * body.radius * horizon,
+              size * (1 - 0.55 * body.drained), 0.5, body.look * body.presence * (0.45 + 0.55 * body.stretch));
+          }
         }
       }
       gl.useProgram(program);

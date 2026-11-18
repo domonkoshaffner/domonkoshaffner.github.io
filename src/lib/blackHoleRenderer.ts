@@ -1,7 +1,8 @@
 import { createInfallRenderer } from './blackHoleInfall';
+import { createBodiesRenderer } from './blackHoleBodies';
 import { createHotspotState } from './blackHoleHotspots';
 import { createDisruptionState } from './blackHoleDisruption';
-import { SCENE_START, OPENING_OVER, openingAge, openingRush, openingStreakGain } from './blackHoleOpening';
+import { SCENE_START, OPENING_OVER, createOpeningState, openingAge, openingStreakGain } from './blackHoleOpening';
 import { createBloomCadence } from './blackHolePerformance';
 import {
   vertexShader, geometryShader, skyFilterShader, materialShader, compositeShader, bloomSourceShader, bloomBlurShader,
@@ -24,6 +25,7 @@ export function startBlackHole(root: HTMLElement) {
   const canvas = root.querySelector<HTMLCanvasElement>('[data-bh-canvas]')!;
   const toggle = document.querySelector<HTMLButtonElement>('[data-bh-toggle]');
   let infall: ReturnType<typeof createInfallRenderer> = null;
+  let bodies: ReturnType<typeof createBodiesRenderer> = null;
   const context = canvas.getContext('webgl2', {
     antialias: false, alpha: true, premultipliedAlpha: true, depth: false, stencil: false,
     powerPreference: 'high-performance',
@@ -53,6 +55,7 @@ export function startBlackHole(root: HTMLElement) {
   }
   const hotSpots = createHotspotState();
   const disruption = createDisruptionState();
+  const opening = createOpeningState();
   const bloomCadence = createBloomCadence();
   // Start each visit in motion; Pause applies to the current visit only.
   let playing = true;
@@ -109,7 +112,7 @@ export function startBlackHole(root: HTMLElement) {
       'uRes', 'uCenter', 'uZoom', 'uTime',
       'uFirst', 'uSecond', 'uTransport', 'uBackground', 'uPlasma',
       'uSceneRes', 'uBloom', 'uOpenSky', 'uBare', 'uSource', 'uDirection',
-      'uHotSpots[0]', 'uHotSpotWidths[0]', 'uWave', 'uWaveShape', 'uBirth',
+      'uHotSpots[0]', 'uHotSpotWidths[0]', 'uWave', 'uWaveShape', 'uBirth', 'uSeeds[0]',
       'uSpace',
     ].map((name) => [name, gl.getUniformLocation(program, name)]));
     return { program, uniforms };
@@ -286,6 +289,9 @@ export function startBlackHole(root: HTMLElement) {
     infall?.resize(rect.width, rect.height,
       rect.width * 0.5 + centerX * rect.height * 0.5,
       rect.height * 0.5 - centerY * rect.height * 0.5, horizon);
+    bodies?.resize(rect.width, rect.height,
+      rect.width * 0.5 + centerX * rect.height * 0.5,
+      rect.height * 0.5 - centerY * rect.height * 0.5, horizon);
     if (import.meta.env.DEV) {
       root.dataset.resolution = `${w} × ${h}`;
       root.dataset.sceneBuilds = String(++builds);
@@ -313,6 +319,7 @@ export function startBlackHole(root: HTMLElement) {
     gl.uniform4fv(pass.uniforms.uWave, disruption.wave);
     gl.uniform2fv(pass.uniforms.uWaveShape, disruption.waveShape);
     gl.uniform1f(pass.uniforms.uBirth, openingAge(time));
+    gl.uniform4fv(pass.uniforms['uSeeds[0]'], opening.seeds);
   }
 
   function drawBloom() {
@@ -343,6 +350,7 @@ export function startBlackHole(root: HTMLElement) {
     const began = import.meta.env.DEV ? performance.now() : 0;
     hotSpots.update(time);
     disruption.update(time, wideLayout);
+    opening.update(time, wideLayout);
     if (timer && gpuQuery && gl.getQueryParameter(gpuQuery, gl.QUERY_RESULT_AVAILABLE)) {
       if (!gl.getParameter(timer.GPU_DISJOINT_EXT)) gpuMs = gl.getQueryParameter(gpuQuery, gl.QUERY_RESULT) / 1e6;
       gl.deleteQuery(gpuQuery); gpuQuery = null;
@@ -373,9 +381,12 @@ export function startBlackHole(root: HTMLElement) {
     gl.uniform1i(composite.uniforms.uOpenSky, 6);
     gl.uniform3fv(composite.uniforms.uSpace, groundColor);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    // In the opening the ordinary streaks are hurried and brighter; the disrupted
-    // star keeps the scene clock.
-    infall?.draw(time + openingRush(time), disruption.stream, openingStreakGain(time));
+    // During the opening its own bodies have the sky; the ordinary streaks fade
+    // in as the ring completes. A planet is solid and hides the mouth of the
+    // stream drawn off it, so the streams go in first.
+    infall?.draw(time, disruption.stream, openingStreakGain(time), opening, wideLayout);
+    bodies?.drawPlanets(opening);
+    bodies?.drawStar(opening);
     if (measure && timer) gl.endQuery(timer.TIME_ELAPSED_EXT);
     if (import.meta.env.DEV) {
       draws++;
@@ -446,12 +457,13 @@ export function startBlackHole(root: HTMLElement) {
     // those old handles after restoration raises INVALID_OPERATION.
     if (!lost) {
       infall?.dispose();
+      bodies?.dispose();
       if (gpuQuery) gl.deleteQuery(gpuQuery);
       for (const program of programs) gl.deleteProgram(program);
       for (const tex of textures) gl.deleteTexture(tex);
       for (const fb of framebuffers) gl.deleteFramebuffer(fb);
     }
-    infall = null; gpuQuery = null;
+    infall = null; bodies = null; gpuQuery = null;
     programs.clear(); textures.clear(); framebuffers.clear();
     scene = null; bloom = null; plasma = null; sceneKey = '';
   }
@@ -467,6 +479,7 @@ export function startBlackHole(root: HTMLElement) {
       ]);
       if (disposed || lost || current !== generation) return;
       infall = createInfallRenderer(canvas, gl);
+      bodies = createBodiesRenderer(canvas, gl);
       skyFormat = deepSkyFormat();
       const atlasSize = Math.min(ATLAS_SIZE, maxTexture);
       plasma = texture(atlasSize, atlasSize, true);

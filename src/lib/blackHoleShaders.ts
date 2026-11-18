@@ -389,18 +389,50 @@ const diskLight = `
   // radial width and angular concentration. Strength is zero between events.
   uniform vec4 uWave;
   uniform vec2 uWaveShape;
-  // The opening: seconds since the disk began to assemble, and any value past
-  // OPENING once it has. Mirrors OPENING_DURATION in blackHoleOpening.ts.
+  // The opening: seconds since it began, and any value past OPENING once it is
+  // over. Mirrors OPENING_DURATION in blackHoleOpening.ts.
   uniform float uBirth;
-  const float OPENING = 7.0;
-  // In the opening, when matter arrives at a place in the disk. The ring grows
-  // from its inner edge outward, along two trailing spiral arms that wind out
-  // ahead of the rest and turn with the disk. The last argument is the local
-  // density of the flow, so dense strands lead and the lanes between follow.
+  const float OPENING = 10.5;
+  // For each of the three planets and then the star: when its matter starts to
+  // settle, at which angle of the disk, at which radius, and how much it brings.
+  uniform vec4 uSeeds[4];
+  // How long caught matter takes to circle the hole once. Mirrors TURN in blackHoleOpening.ts.
+  const float LAP = TAU / 3.5;
+  // How long after a stream starts to settle its matter reaches a place a given
+  // turn further round, in laps. The matter runs on ahead round the orbit, so
+  // the ring is drawn round the hole from where the stream lands. The count
+  // has to come back to nothing as the turn closes: a place just behind the
+  // landing is fed by the stream that is still arriving over it. Were it left
+  // to jump there, the ring would show a hard edge along that line, lit on one
+  // side and dark on the other, for as long as it took to fill.
+  float sweep(float turn) {
+    float lap = fract(turn / TAU);
+    return lap * (1.0 - smoothstep(0.62, 1.0, lap));
+  }
+  // When the star's matter reaches a place in the disk: round the orbit from
+  // where its stream lands, and from there outward (and the little way inward),
+  // the outer parts trailing behind, which winds the growth into a spiral. The
+  // last argument is the local density of the flow: dense strands lead, the
+  // lanes between them follow.
   float arrivalTime(float r, float phi, float density) {
-    float outward = clamp((r - R_IN) / (R_OUT - R_IN), 0.0, 1.0);
-    float arm = 0.5 + 0.5 * cos(2.0 * (phi + 2.6 * log(max(r, R_IN)) - 0.35 * uBirth) - 1.2);
-    return 0.4 + 2.3 * outward + 1.0 * (1.0 - arm) + 0.3 * (1.0 - density);
+    vec4 star = uSeeds[3];
+    float away = r - star.z;
+    // Smooth through the orbit itself, so no crease marks it.
+    float spread = (sqrt(away * away + 0.16) - 0.4) / (away > 0.0 ? 2.6 : 3.0);
+    float lapped = sweep(phi - star.y - 0.55 * away) * LAP
+      * mix(1.0, 0.5, clamp(away / (R_OUT - star.z), 0.0, 1.0));
+    return star.x + lapped + spread + 0.3 * (1.0 - density);
+  }
+  // Before the star, each planet leaves a thin ring of matter at its own orbit,
+  // drawn round the hole in the same way.
+  float planetRings(float r, float phi) {
+    float rings = 0.0;
+    for (int k = 0; k < 3; k++) {
+      vec4 planet = uSeeds[k];
+      float band = (r - planet.z) / 0.5;
+      rings += planet.w * exp(-band * band) * smoothstep(0.0, 0.9, uBirth - planet.x - sweep(phi - planet.y) * LAP);
+    }
+    return rings;
   }
 
   float localHeating(float r, float phi, vec2 radialDerivative, vec2 angularDerivative) {
@@ -500,23 +532,24 @@ const diskLight = `
       energy *= 1.0 + 2.4 * surge;
     }
     if (uBirth < OPENING) {
-      // The disk assembles rather than switching on. Matter arrives first at
-      // the outer edge and along two trailing arms, and each place fills
-      // strand by strand: the densest threads show first, thin and separate,
-      // then broaden until the lanes between them close.
+      // The disk assembles from the matter the opening's bodies bring. Each
+      // place fills strand by strand: the densest threads show first, thin and
+      // separate, then broaden until the lanes between them close. The planets'
+      // matter is only enough for the first threads; the star's fills the rest.
       float age = uBirth - arrivalTime(r, phi, field.r);
-      float fill = smoothstep(0.0, 1.9, age);
+      float fill = clamp(smoothstep(0.0, 1.3, age) + planetRings(r, phi), 0.0, 1.0);
       float strand = 0.6 * clamp(field.g * 1.5, 0.0, 1.0) + 0.4 * field.b;
-      float threshold = mix(1.05, -0.35, fill);
+      // Above every strand's value while nothing has arrived, so not an ember shows early.
+      float threshold = mix(1.35, -0.35, fill);
       float settled = smoothstep(threshold - 0.3, threshold + 0.3, strand);
       // New matter is dim and deep red; it warms to its own colour as it settles,
       // with a brief flare as it is compressed into the flow.
-      float warm = smoothstep(0.0, 2.1, age);
+      float warm = smoothstep(0.0, 1.9, age);
       col = mix(col * vec3(0.9, 0.30, 0.14), col, warm);
-      energy *= settled * mix(0.14, 1.0, warm * warm) * (1.0 + 0.5 * exp(-pow((age - 0.6) / 0.4, 2.0)));
+      energy *= settled * mix(0.2, 1.0, warm * warm) * (1.0 + 0.5 * exp(-pow((age - 0.5) / 0.35, 2.0)));
       // One slight breath once the outer edge has filled and the whole disk
       // catches, then it is the ordinary scene.
-      energy *= 1.0 + 0.16 * exp(-pow((uBirth - 6.0) / 0.45, 2.0));
+      energy *= 1.0 + 0.16 * exp(-pow((uBirth - uSeeds[3].x - 4.45) / 0.4, 2.0));
     }
     return col * beam * profile * energy * weight;
   }
@@ -612,7 +645,7 @@ ${bloomEncoding}
       // at that place.
       float ringRadius = clamp(length(uv) / radius * B_CRIT - 0.8, R_IN, R_OUT);
       float gathered = uBirth - arrivalTime(ringRadius, PI - atan(uv.y, uv.x), 0.5);
-      sky = mix(texelFetch(uOpenSky, pixel, 0).rgb, sky, smoothstep(0.0, 2.3, gathered));
+      sky = mix(texelFetch(uOpenSky, pixel, 0).rgb, sky, smoothstep(0.0, 1.8, gathered));
     }
     vec3 diskEmission = emission(first, tr.g * 2.0 - 1.0, tr.r)
       + emission(second, tr.a * 2.0 - 1.0, tr.b);
@@ -638,7 +671,7 @@ ${bloomEncoding}
     float aureole = exp(-distanceFromEdge / (radius * 0.055));
     // The thin ring and its aureole are the inner disk's light bent round the
     // hole, so in the opening they come on as the inner disk does.
-    float ringOn = uBirth < OPENING ? smoothstep(1.4, 4.0, uBirth) : 1.0;
+    float ringOn = uBirth < OPENING ? smoothstep(uSeeds[3].x + 0.8, uSeeds[3].x + 3.2, uBirth) : 1.0;
     col += (rim * vec3(0.72, 0.86, 1.0) * 3.0
       + aureole * vec3(0.12, 0.32, 0.80) * 0.85) * ringOn;
     vec2 screen = gl_FragCoord.xy / uRes;
@@ -674,7 +707,7 @@ ${bloomEncoding}
     halo *= pow(fadeAtRim / max(fadeHere, 0.12), 2.2);
     // In the opening the halo is the last thing to appear: light spreading
     // into space once the ring has filled out to its edge.
-    if (uBirth < OPENING) halo *= smoothstep(5.3, 6.9, uBirth);
+    if (uBirth < OPENING) halo *= smoothstep(uSeeds[3].x + 3.95, uSeeds[3].x + 5.25, uBirth);
     // Tinted towards the deep red of the disk's rim, so over the blue-black
     // floor it reads as a glow, not as a grey veil.
     glow += body * vec3(1.0, 0.42, 0.16) * 3.2 * halo;
