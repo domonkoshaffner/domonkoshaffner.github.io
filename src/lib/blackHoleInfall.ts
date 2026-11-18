@@ -350,7 +350,7 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
               if (body.kind === STAR) {
                 // Glowing gas around a white-hot core.
                 ribbon(3.2, 1, 0.80, 0.52, tongue(0.5, 0.5, fed, 0.5 * rise));
-                ribbon(0.8 + 1.0 * body.stretch, 1, 0.97, 0.90, tongue(1.15, 0.9 * mouth, fed, 1.6 * rise));
+                ribbon(0.8 + 1.0 * body.stretch, 1, 0.97, 0.90, tongue(1.15, 0.6 * mouth, fed, 1.6 * rise));
               } else if (rock) {
                 ribbon(0.6, 1, 0.94, 0.86, comet(0.7, body.look * body.stretch));
               } else {

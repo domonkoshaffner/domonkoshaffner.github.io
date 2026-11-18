@@ -35,6 +35,7 @@ export function createBodiesRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
   gl.shaderSource(fragment, `#version 300 es
     precision highp float;
     uniform float uRadius;    // of the body, in CSS pixels
+    uniform float uExtent;    // half the width of what is drawn, in CSS pixels
     uniform float uPixel;     // CSS pixels per device pixel
     uniform vec2 uAxis;       // the way it is going on screen: its near side is drawn out that way
     uniform float uStretch;   // how far the tides have got with it: 0 whole, 1 a teardrop
@@ -81,18 +82,29 @@ export function createBodiesRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
       float drain = 1.0 - uGirth;
 
       if (uLook > 8.5) {
-        // The star: a white-hot core, a warm glow, and a faint cross of light
-        // from the brilliance of it. It is light, so it is added to the scene.
-        float core = 1.0 - smoothstep(1.0 - aa, 1.0 + aa, d);
-        vec3 light = vec3(1.0, 0.97, 0.90) * core * (0.82 + 0.18 * sqrt(max(1.0 - d * d, 0.0)));
-        // Its glow goes into the stream with it.
-        light += vec3(1.0, 0.84, 0.58) * (0.55 * exp(-max(d - 1.0, 0.0) / 1.7) + 0.13 * exp(-d / 6.5)) * (1.0 - core)
-          * (1.0 - 0.85 * smoothstep(0.1, 0.9, drain));
+        // The star: in truth ten times the width of its largest planet, and
+        // here at least the largest body. A photosphere that darkens and
+        // reddens towards its limb, finely mottled; a close corona and a faint
+        // wide glow. It is light, so it is added to the scene.
+        float disc = 1.0 - smoothstep(1.0 - aa, 1.0 + aa, d);
+        float mu = sqrt(max(1.0 - d * d, 0.0));
+        float grain = 0.6 * noise(q * 7.0 + 3.0) + 0.4 * noise(q * 15.0);
+        vec3 light = mix(vec3(1.0, 0.64, 0.28), vec3(1.0, 0.95, 0.84), pow(mu, 0.7))
+          * (0.60 + 0.40 * mu) * (0.95 + 0.10 * grain) * disc;
+        // Its corona and glow go into the stream with it.
+        float beyond = max(d - 1.0, 0.0);
+        light += vec3(1.0, 0.80, 0.52) * (0.50 * exp(-beyond / 0.28) + 0.16 * exp(-beyond / 1.3) + 0.045 * exp(-beyond / 4.0))
+          * (1.0 - disc) * (1.0 - 0.85 * smoothstep(0.1, 0.9, drain));
+        // No lens stands between this star and the eye, so it has no cross of
+        // light (the owner asked for that to go). Its corona thins out all
+        // round it instead, in soft streamers of uneven length, as the Sun's
+        // does in an eclipse. Whole turns only, so they close without a seam.
         vec2 s = vLocal / uRadius;
-        vec2 spike = vec2(dot(s, vec2(0.94, 0.34)), dot(s, vec2(-0.34, 0.94)));
-        light += vec3(1.0, 0.90, 0.74) * 0.16 * (exp(-abs(spike.y) * 2.6) * exp(-abs(spike.x) / 9.0)
-          + exp(-abs(spike.x) * 2.6) * exp(-abs(spike.y) / 9.0)) * (1.0 - uStretch);
-        light *= uAlpha;
+        float around = atan(s.y, s.x), away = max(length(s) - 1.0, 0.0);
+        float streamers = 0.5 + 0.22 * sin(5.0 * around + 1.3) + 0.16 * sin(9.0 * around + 4.1) + 0.12 * sin(16.0 * around + 2.2);
+        light += vec3(1.0, 0.86, 0.64) * 0.11 * exp(-away / (1.2 + 2.6 * streamers)) * (1.0 - disc) * (1.0 - uStretch);
+        // Exactly nothing at the edge of what is drawn, so no edge can show.
+        light *= uAlpha * (1.0 - smoothstep(0.72, 1.0, length(vLocal) / uExtent));
         color = vec4(light, max(light.r, max(light.g, light.b)));
         return;
       }
@@ -233,7 +245,7 @@ export function createBodiesRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
       const [x, y] = place(star.radius, star.angle);
       const radius = bodyRadius(star, horizon), reach = bodyReach(star);
       gl.uniform2f(uniforms.uAt, x, y);
-      gl.uniform1f(uniforms.uExtent, radius * Math.max(30, 5 * reach));
+      gl.uniform1f(uniforms.uExtent, radius * Math.max(13, 1.6 * reach + 3));
       gl.uniform1f(uniforms.uRadius, radius);
       gl.uniform2f(uniforms.uAxis, Math.cos(star.heading), Math.sin(star.heading));
       gl.uniform1f(uniforms.uStretch, star.stretch);

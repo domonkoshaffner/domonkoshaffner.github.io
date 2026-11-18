@@ -136,6 +136,16 @@ test('the side nearest the hole goes first: matter runs ahead of each planet and
   }
 });
 
+test('the star is the largest body on every screen, as it is in truth', () => {
+  const bodies = stateAt(0).bodies, star = bodies[3];
+  assert.equal(star.kind, STAR);
+  for (const horizon of [20, 40, 52, 78, 150, 400]) {
+    for (const planet of bodies.slice(0, 3)) {
+      assert.ok(bodyRadius(star, horizon) > 1.5 * bodyRadius(planet, horizon), `at ${horizon} pixels to the shadow radius`);
+    }
+  }
+});
+
 test('a body does not shrink away or fade: it is drawn out, longer and finer, until it is its stream', () => {
   for (const wide of [true, false]) {
     for (let k = 0; k < 4; k++) {
@@ -210,7 +220,8 @@ test('no two of the planets and the star ever touch on their way in', () => {
       for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) {
         if (bodies[i].drained > 0.85 || bodies[j].drained > 0.85) continue;
         const a = place(bodies[i]), b = place(bodies[j]);
-        assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1]) > 0.55, `bodies ${i} and ${j} keep clear of each other at ${age.toFixed(1)}s`);
+        // The star is the largest of them and has a corona: it is given more room.
+        assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1]) > (j === 3 ? 0.9 : 0.55), `bodies ${i} and ${j} keep clear of each other at ${age.toFixed(1)}s`);
       }
     }
   }

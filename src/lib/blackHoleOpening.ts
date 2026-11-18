@@ -32,6 +32,13 @@ const PITCH = 0.9;
 const GATHER = 2.5;
 /** Matter starts to spread into the ring after turning this far past being caught, and has merged by the second. */
 const SETTLE_FROM = 2.2, SETTLE_BY = 4.6;
+/**
+ * The ring begins to light where the front of a stream is once it has turned
+ * this far past being caught, and from there the light keeps pace with that
+ * front. Sooner than the stream starts to fade: the owner found the disk came
+ * up a little late after the streams, so it now starts under them.
+ */
+const LIGHT_FROM = 0.8;
 /** A body drains into its stream between these times, before and after the front of its matter is caught. */
 const DRAIN_FROM = 0.35, DRAIN_BY = 0.95;
 /** A rock is drawn out behind itself from this long before it is caught to this long after. */
@@ -64,8 +71,8 @@ const at = (x: number, y: number): [number, number] => [Math.hypot(x, y), Math.a
 const BODIES: Body[] = [
   { kind: PLANET, hold: 1.0, fall: 2.2, wide: at(-6.6, -2.2), narrow: at(-2.3, -2.9), orbit: 2.20, reach: 0, pace: 3.4, size: 0.140, look: 0, share: 0.30 },
   { kind: PLANET, hold: 1.3, fall: 2.4, wide: at(-7.1, -0.5), narrow: at(-3.55, -1.0), orbit: 1.55, reach: 0, pace: 3.4, size: 0.175, look: 1, share: 0.34 },
-  { kind: PLANET, hold: 1.6, fall: 2.6, wide: at(-7.7, -2.55), narrow: at(-2.45, -1.8), orbit: 2.50, reach: 0, pace: 4.0, size: 0.105, look: 2, share: 0.26 },
-  { kind: STAR, hold: 2.0, fall: 2.4, wide: at(-8.4, -1.5), narrow: at(-3.35, -2.75), orbit: 1.80, reach: 0, pace: 4.0, size: 0.058, look: 0, share: 1 },
+  { kind: PLANET, hold: 1.6, fall: 2.6, wide: at(-7.7, -2.55), narrow: at(-2.0, -1.9), orbit: 2.50, reach: 0, pace: 4.0, size: 0.105, look: 2, share: 0.26 },
+  { kind: STAR, hold: 2.0, fall: 2.4, wide: at(-8.4, -1.5), narrow: at(-3.4, -2.85), orbit: 1.80, reach: 0, pace: 4.0, size: 0.30, look: 0, share: 1 },
   { kind: FRAGMENT, hold: 4.4, fall: 1.9, wide: at(-9.3, -0.4), narrow: at(-3.0, -0.2), orbit: 2.15, reach: 0.45, pace: 0, size: 0.012, look: 0.9, share: 0 },
   { kind: FRAGMENT, hold: 4.9, fall: 1.9, wide: at(-10.0, -2.3), narrow: at(-3.9, -2.0), orbit: 2.50, reach: 0.40, pace: 0, size: 0.010, look: 0.7, share: 0 },
   { kind: FRAGMENT, hold: 5.4, fall: 1.8, wide: at(-6.1, -1.2), narrow: at(-1.6, -3.2), orbit: 1.95, reach: 0.45, pace: 0, size: 0.011, look: 0.8, share: 0 },
@@ -201,9 +208,14 @@ export type OpeningBody = {
   bend: number;          // the curve of its path over the length it is drawn out to: 1 / radius of the arc, in shadow radii
 };
 
-/** The radius of a body at rest, in CSS pixels: never so small that it stops reading as what it is. */
+/**
+ * The radius of a body at rest, in CSS pixels: never so small that it stops
+ * reading as what it is. Nothing here is to scale (the star is ten times the
+ * width of a giant planet, and next to this hole a planet would be less than a
+ * pixel), but the order is true: the star is the largest body, then the giants.
+ */
 export function bodyRadius(body: OpeningBody, horizon: number) {
-  const least = body.kind === STAR ? 2.6 : body.kind === FRAGMENT ? 0.9 : body.look === 1 ? 7 : body.look === 0 ? 5.6 : 4.4;
+  const least = body.kind === STAR ? 11 : body.kind === FRAGMENT ? 0.9 : body.look === 1 ? 7 : body.look === 0 ? 5.6 : 4.4;
   return Math.max(least, body.size * horizon);
 }
 
@@ -241,15 +253,15 @@ export function createOpeningState() {
         seededFor = wide;
         for (let k = 0; k < 4; k++) {
           const body = BODIES[k], end = caught[wide ? 0 : 1][k];
-          // How long after being caught the front of its matter has turned far enough to settle.
+          // How long after being caught the front of its matter has turned far enough to light the ring.
           let low = 0, high = 3;
           for (let i = 0; i < 40; i++) {
             const mid = (low + high) / 2;
-            if (turned(end.progress + TURN / PITCH * mid) - turned(end.progress) < SETTLE_FROM) low = mid; else high = mid;
+            if (turned(end.progress + TURN / PITCH * mid) - turned(end.progress) < LIGHT_FROM) low = mid; else high = mid;
           }
           seeds[k * 4] = body.hold + body.fall + high;
           // The disk's own angle runs half a turn from the screen's.
-          const screen = rest(body, wide)[1] + turned(end.progress) + SETTLE_FROM;
+          const screen = rest(body, wide)[1] + turned(end.progress) + LIGHT_FROM;
           seeds[k * 4 + 1] = ((screen + Math.PI) % TAU + TAU) % TAU;
           // Apparent radius on screen to radius in the disk, for this face-on view.
           seeds[k * 4 + 2] = 2.598 * body.orbit - 0.8;
