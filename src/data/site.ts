@@ -22,7 +22,7 @@ export const blackHole = {
     title: 'Approaching the singularity.',
     description: 'From gravitational collapse to the emergence of superintelligence.',
   },
-  note: 'Artistic interpretation. Light paths and motion are simplified.',
+  note: 'Artistic interpretation. Light bends as relativity predicts; sizes and time are not to scale.',
   credit: {
     label: 'Inspired by NASA’s black hole simulation.',
     url: 'https://www.youtube.com/watch?v=dGEIsnBRWGs',
