@@ -26,9 +26,12 @@ import { portrait } from '../data/site';
       title={portrait.replay}
       hidden
     ></canvas>
-    <span slot="meta" class="readout tnum" data-readout aria-live="polite">{portrait.resolved}</span>
   </Figure>
+  <!-- The status has a line of its own, with the control. Its length changes as
+       the schedule runs ("resolved", "step 36 / 40"); beside the caption that
+       made the caption wrap and everything below it jump. -->
   <div class="controls">
+    <span class="readout tnum" data-readout aria-live="polite">{portrait.resolved}</span>
     <button type="button" class="replay" data-replay hidden>{portrait.replay}</button>
   </div>
 </div>
@@ -41,10 +44,13 @@ import { portrait } from '../data/site';
   .readout { white-space: nowrap; }
   .controls {
     display: flex;
-    justify-content: flex-end;
-    align-items: center;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
     margin-top: 0.55rem;
     font-size: 0.9rem;
+    line-height: 1.45;
+    color: var(--muted);
   }
   .replay {
     color: var(--muted);
