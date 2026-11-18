@@ -32,9 +32,11 @@
     inset: 0;
     width: 100%;
     height: 100%;
-    /* The sky fades in under the opening instead of appearing at once. */
+    /* The sky fades in under the opening instead of appearing at once. Kept
+       short: the scene cannot be in the first paint (the graphics card needs
+       about a tenth of a second to compile it), so it should not linger. */
     opacity: 0;
-    transition: opacity 0.45s ease;
+    transition: opacity 0.25s ease-out;
   }
   .bh.is-ready canvas { opacity: 1; }
   /* A complete still image without JS, or if WebGL is unavailable. While the
