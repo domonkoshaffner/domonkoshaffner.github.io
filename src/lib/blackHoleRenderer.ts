@@ -1,6 +1,7 @@
 import { createInfallRenderer } from './blackHoleInfall';
 import { createHotspotState } from './blackHoleHotspots';
 import { createDisruptionState } from './blackHoleDisruption';
+import { SCENE_START, OPENING_OVER, openingAge, openingRush, openingStreakGain } from './blackHoleOpening';
 import { createBloomCadence } from './blackHolePerformance';
 import {
   vertexShader, geometryShader, skyFilterShader, materialShader, compositeShader, bloomSourceShader, bloomBlurShader,
@@ -16,7 +17,7 @@ type Pass = {
   program: WebGLProgram;
   uniforms: Record<string, WebGLUniformLocation | null>;
 };
-type Scene = { framebuffer: WebGLFramebuffer; textures: WebGLTexture[] };
+type Scene = { framebuffer: WebGLFramebuffer; textures: WebGLTexture[]; openSky: WebGLTexture | null };
 type Bloom = { width: number; height: number; textures: WebGLTexture[]; targets: WebGLFramebuffer[] };
 
 export function startBlackHole(root: HTMLElement) {
@@ -28,7 +29,7 @@ export function startBlackHole(root: HTMLElement) {
     powerPreference: 'high-performance',
   });
   const fail = () => {
-    root.classList.remove('is-ready');
+    root.classList.remove('is-ready', 'is-loading');
     root.classList.add('is-fallback');
     if (toggle) toggle.hidden = true;
   };
@@ -56,7 +57,7 @@ export function startBlackHole(root: HTMLElement) {
   // Start each visit in motion; Pause applies to the current visit only.
   let playing = true;
   let inView = true, ready = false, disposed = false, lost = false;
-  let time = 18.0, last = 0, raf = 0, resizeTimer = 0;
+  let time = SCENE_START, last = 0, raf = 0, resizeTimer = 0;
   // Local development only: open with ?t=40 to start the scene clock there.
   if (import.meta.env.DEV) {
     const start = Number(new URLSearchParams(location.search).get('t'));
@@ -107,8 +108,8 @@ export function startBlackHole(root: HTMLElement) {
     const uniforms = Object.fromEntries([
       'uRes', 'uCenter', 'uZoom', 'uTime',
       'uFirst', 'uSecond', 'uTransport', 'uBackground', 'uPlasma',
-      'uSceneRes', 'uBloom', 'uSource', 'uDirection',
-      'uHotSpots[0]', 'uHotSpotWidths[0]', 'uWave', 'uWaveShape',
+      'uSceneRes', 'uBloom', 'uOpenSky', 'uBare', 'uSource', 'uDirection',
+      'uHotSpots[0]', 'uHotSpotWidths[0]', 'uWave', 'uWaveShape', 'uBirth',
       'uSpace',
     ].map((name) => [name, gl.getUniformLocation(program, name)]));
     return { program, uniforms };
@@ -183,6 +184,7 @@ export function startBlackHole(root: HTMLElement) {
     if (!scene) return;
     gl.deleteFramebuffer(scene.framebuffer); framebuffers.delete(scene.framebuffer);
     for (const tex of scene.textures) { gl.deleteTexture(tex); textures.delete(tex); }
+    if (scene.openSky) { gl.deleteTexture(scene.openSky); textures.delete(scene.openSky); }
     scene = null;
   }
 
@@ -212,9 +214,10 @@ export function startBlackHole(root: HTMLElement) {
     deleteScene();
     canvas.width = w; canvas.height = h;
     const attachments = [texture(w, h), texture(w, h), texture(w, h), texture(w, h, false, skyFormat)];
-    scene = { textures: attachments, framebuffer: target(attachments) };
+    scene = { textures: attachments, framebuffer: target(attachments), openSky: null };
     sceneKey = key;
     use(geometry);
+    gl.uniform1f(geometry.uniforms.uBare, 0);
     // Data textures must not be dithered: their channels contain packed coordinates.
     gl.disable(gl.DITHER);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -234,6 +237,36 @@ export function startBlackHole(root: HTMLElement) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.deleteFramebuffer(skyTarget); framebuffers.delete(skyTarget);
     gl.deleteTexture(rawSky); textures.delete(rawSky);
+    // While the disk has not assembled yet, the composite also needs the sky
+    // with nothing in front of it, at full size so its stars are as crisp as
+    // the rest. The same pass writes it (it returns before tracing any light
+    // path, so this is cheap), and it gets the same near-shadow filter.
+    if (openingAge(time) < OPENING_OVER) {
+      const bareRaw = texture(w, h, false, skyFormat);
+      const bareTarget = gl.createFramebuffer();
+      if (!bareTarget) throw new Error('Unable to allocate a framebuffer');
+      framebuffers.add(bareTarget);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bareTarget);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT3, gl.TEXTURE_2D, bareRaw, 0);
+      gl.drawBuffers([gl.NONE, gl.NONE, gl.NONE, gl.COLOR_ATTACHMENT3]);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
+        use(geometry);
+        gl.uniform1f(geometry.uniforms.uBare, 1);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        const bareSky = texture(w, h, false, skyFormat);
+        const filterTarget = target([bareSky]);
+        use(skyFilter);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, bareRaw);
+        gl.uniform1i(skyFilter.uniforms.uSource, 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.deleteFramebuffer(filterTarget); framebuffers.delete(filterTarget);
+        scene.openSky = bareSky;
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.deleteFramebuffer(bareTarget); framebuffers.delete(bareTarget);
+      gl.deleteTexture(bareRaw); textures.delete(bareRaw);
+    }
     // Only the soft light uses smaller targets. The scene, ring and stars keep
     // their original resolution. At retina density the glow is quarter-size;
     // sizing in CSS pixels keeps its apparent radius stable across densities.
@@ -279,6 +312,7 @@ export function startBlackHole(root: HTMLElement) {
     gl.uniform2fv(pass.uniforms['uHotSpotWidths[0]'], hotSpots.widths);
     gl.uniform4fv(pass.uniforms.uWave, disruption.wave);
     gl.uniform2fv(pass.uniforms.uWaveShape, disruption.waveShape);
+    gl.uniform1f(pass.uniforms.uBirth, openingAge(time));
   }
 
   function drawBloom() {
@@ -328,9 +362,20 @@ export function startBlackHole(root: HTMLElement) {
     gl.activeTexture(gl.TEXTURE5);
     gl.bindTexture(gl.TEXTURE_2D, bloom!.textures[0]);
     gl.uniform1i(composite.uniforms.uBloom, 5);
+    // Only read during the opening; afterwards it is released, and any texture
+    // keeps the sampler valid.
+    if (scene.openSky && openingAge(time) === OPENING_OVER) {
+      gl.deleteTexture(scene.openSky); textures.delete(scene.openSky);
+      scene.openSky = null;
+    }
+    gl.activeTexture(gl.TEXTURE6);
+    gl.bindTexture(gl.TEXTURE_2D, scene.openSky ?? scene.textures[3]);
+    gl.uniform1i(composite.uniforms.uOpenSky, 6);
     gl.uniform3fv(composite.uniforms.uSpace, groundColor);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    infall?.draw(time, disruption.stream);
+    // In the opening the ordinary streaks are hurried and brighter; the disrupted
+    // star keeps the scene clock.
+    infall?.draw(time + openingRush(time), disruption.stream, openingStreakGain(time));
     if (measure && timer) gl.endQuery(timer.TIME_ELAPSED_EXT);
     if (import.meta.env.DEV) {
       draws++;
@@ -435,7 +480,7 @@ export function startBlackHole(root: HTMLElement) {
       gl.deleteFramebuffer(atlasTarget); framebuffers.delete(atlasTarget);
       ready = true;
       resize();
-      root.classList.remove('is-fallback'); root.classList.add('is-ready');
+      root.classList.remove('is-fallback', 'is-loading'); root.classList.add('is-ready');
       if (toggle) toggle.hidden = false;
       setPlaying(playing);
     } catch (error) {

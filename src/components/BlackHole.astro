@@ -6,6 +6,16 @@
   <canvas data-bh-canvas aria-hidden="true"></canvas>
   <div class="bh-fallback" aria-hidden="true"></div>
 </div>
+<script is:inline>
+  // The scene opens dark and assembles its disk, so while it loads nothing lit
+  // may show. Marked before the first paint; without scripts the still picture
+  // stays. If the renderer never arrives, the picture comes back.
+  (() => {
+    const hole = document.currentScript.previousElementSibling;
+    hole.classList.add('is-loading');
+    setTimeout(() => { if (!hole.classList.contains('is-ready')) hole.classList.remove('is-loading'); }, 8000);
+  })();
+</script>
 
 <style>
   .bh {
@@ -22,8 +32,13 @@
     inset: 0;
     width: 100%;
     height: 100%;
+    /* The sky fades in under the opening instead of appearing at once. */
+    opacity: 0;
+    transition: opacity 0.45s ease;
   }
-  /* A complete still image while initializing, without JS, or if WebGL is unavailable. */
+  .bh.is-ready canvas { opacity: 1; }
+  /* A complete still image without JS, or if WebGL is unavailable. While the
+     renderer loads the page's own stars show instead. */
   .bh-fallback {
     position: absolute;
     inset: 0;
@@ -46,7 +61,7 @@
   @media (max-width: 860px) {
     .bh-fallback::before { left: 50%; top: 34%; width: min(90vw, 65vh); }
   }
-  .bh.is-ready .bh-fallback { display: none; }
+  .bh.is-ready .bh-fallback, .bh.is-loading .bh-fallback { display: none; }
   .bh.is-fallback canvas { display: none; }
   .bh.is-fallback .bh-fallback { display: block; }
 </style>

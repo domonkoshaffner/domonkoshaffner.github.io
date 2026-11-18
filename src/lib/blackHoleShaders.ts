@@ -40,16 +40,8 @@ const common = `
   float unpack16(vec2 v) { return dot(v, vec2(65280.0, 255.0)) / 65535.0; }
 `;
 
-// Calculated only at initialization or an actual viewport change. RGBA8 targets
-// work without float-render-target extensions; each material coordinate is 16-bit.
-export const geometryShader = `#version 300 es
-${common}
-  layout(location = 0) out vec4 firstHit;
-  layout(location = 1) out vec4 secondHit;
-  layout(location = 2) out vec4 transport;
-  layout(location = 3) out vec4 background;
-  const float R_BOUND = 13.0;
-
+// The sky: fixed stars and the galaxy band, as functions of a sight line's direction.
+const skyField = `
   vec3 stars(vec3 d) {
     vec2 sph = vec2(atan(d.z, d.x), asin(clamp(d.y, -1.0, 1.0)));
     vec3 col = vec3(0.0);
@@ -80,9 +72,13 @@ ${common}
         col += vec3(0.8, 0.86, 1.0) * br * 0.35;
       }
     }
+    // The faint haze is laid out in longitude and latitude, and the camera looks
+    // almost straight along the pole, where that layout pinches into rays. They
+    // sit behind the disk, but the opening shows the sky there, so the haze
+    // fades out towards the pole.
     col += vec3(0.025, 0.045, 0.075)
       * pow(vnoise(sph * 3.0), 2.0) * vnoise(sph * 9.0 + 4.2)
-      * (0.5 + vnoise(sph * 20.0 + 9.1)) * 0.08;
+      * (0.5 + vnoise(sph * 20.0 + 9.1)) * 0.08 * (1.0 - smoothstep(0.80, 0.98, abs(d.y)));
     return col;
   }
 
@@ -154,7 +150,21 @@ ${common}
     }
     return light;
   }
+`;
 
+// Calculated only at initialization or an actual viewport change. RGBA8 targets
+// work without float-render-target extensions; each material coordinate is 16-bit.
+export const geometryShader = `#version 300 es
+${common}
+  layout(location = 0) out vec4 firstHit;
+  layout(location = 1) out vec4 secondHit;
+  layout(location = 2) out vec4 transport;
+  layout(location = 3) out vec4 background;
+  // 1 writes only the sky of the opening, before there is a disk: see main.
+  uniform float uBare;
+  const float R_BOUND = 13.0;
+
+${skyField}
   vec4 hitCoordinates(vec3 p) {
     return vec4(pack16(length(p.xz) / R_OUT), pack16((atan(p.z, p.x) + PI) / TAU));
   }
@@ -195,6 +205,24 @@ ${common}
     float bend = 2.0 / impact * sqrt(max(1.0 - impact * impact / (R_BOUND * R_BOUND), 0.0));
     vec3 farDir = rd * cos(bend) + cross(normalize(cross(ro, rd)), rd) * sin(bend);
     vec3 sky = stars(rd) * nearField + galaxy(farDir, fw, rt, up, 1.0);
+    if (uBare > 0.5) {
+      // The sky of the opening, before there is a disk: a plain starry sky with
+      // a hole in it. The stars are where they are, and the band is seen along
+      // a sight line bent only as much as at the disk's outer edge, and less
+      // and less towards the hole, so it runs straight up to the shadow. The
+      // true light paths would wrap the band into a ring of light around the
+      // shadow (it passes right behind the hole) and leave fine ripples in the
+      // sky; behind the disk both are hidden, but here they would read as the
+      // outline of a ring before there is one. Beyond the disk's edge this is
+      // exactly the sky above, so the two meet without a seam.
+      float reach = max(impact, R_OUT);
+      float soft = 2.0 / reach * sqrt(max(1.0 - reach * reach / (R_BOUND * R_BOUND), 0.0))
+        * smoothstep(3.0, R_OUT, impact);
+      vec3 softDir = rd * cos(soft) + cross(normalize(cross(ro, rd)), rd) * sin(soft);
+      vec3 bare = (stars(rd) * nearField + galaxy(softDir, fw, rt, up, 1.0)) * edge;
+      background = vec4(sqrt(clamp(bare * 0.25, 0.0, 1.0)), 1.0);
+      return;
+    }
     if (impact > R_OUT + 1.0) {
       background = vec4(sqrt(clamp(sky * 0.25, 0.0, 1.0)), 1.0);
       return;
@@ -361,6 +389,19 @@ const diskLight = `
   // radial width and angular concentration. Strength is zero between events.
   uniform vec4 uWave;
   uniform vec2 uWaveShape;
+  // The opening: seconds since the disk began to assemble, and any value past
+  // OPENING once it has. Mirrors OPENING_DURATION in blackHoleOpening.ts.
+  uniform float uBirth;
+  const float OPENING = 7.0;
+  // In the opening, when matter arrives at a place in the disk. The ring grows
+  // from its inner edge outward, along two trailing spiral arms that wind out
+  // ahead of the rest and turn with the disk. The last argument is the local
+  // density of the flow, so dense strands lead and the lanes between follow.
+  float arrivalTime(float r, float phi, float density) {
+    float outward = clamp((r - R_IN) / (R_OUT - R_IN), 0.0, 1.0);
+    float arm = 0.5 + 0.5 * cos(2.0 * (phi + 2.6 * log(max(r, R_IN)) - 0.35 * uBirth) - 1.2);
+    return 0.4 + 2.3 * outward + 1.0 * (1.0 - arm) + 0.3 * (1.0 - density);
+  }
 
   float localHeating(float r, float phi, vec2 radialDerivative, vec2 angularDerivative) {
     float heat = 0.0;
@@ -458,6 +499,25 @@ const diskLight = `
       col = mix(col, vec3(1.0, 0.78, 0.42), clamp(surge * 0.30, 0.0, 0.5));
       energy *= 1.0 + 2.4 * surge;
     }
+    if (uBirth < OPENING) {
+      // The disk assembles rather than switching on. Matter arrives first at
+      // the outer edge and along two trailing arms, and each place fills
+      // strand by strand: the densest threads show first, thin and separate,
+      // then broaden until the lanes between them close.
+      float age = uBirth - arrivalTime(r, phi, field.r);
+      float fill = smoothstep(0.0, 1.9, age);
+      float strand = 0.6 * clamp(field.g * 1.5, 0.0, 1.0) + 0.4 * field.b;
+      float threshold = mix(1.05, -0.35, fill);
+      float settled = smoothstep(threshold - 0.3, threshold + 0.3, strand);
+      // New matter is dim and deep red; it warms to its own colour as it settles,
+      // with a brief flare as it is compressed into the flow.
+      float warm = smoothstep(0.0, 2.1, age);
+      col = mix(col * vec3(0.9, 0.30, 0.14), col, warm);
+      energy *= settled * mix(0.14, 1.0, warm * warm) * (1.0 + 0.5 * exp(-pow((age - 0.6) / 0.4, 2.0)));
+      // One slight breath once the outer edge has filled and the whole disk
+      // catches, then it is the ordinary scene.
+      energy *= 1.0 + 0.16 * exp(-pow((uBirth - 6.0) / 0.45, 2.0));
+    }
     return col * beam * profile * energy * weight;
   }
 
@@ -522,6 +582,7 @@ ${common}
 ${diskLight}
 ${bloomEncoding}
   uniform sampler2D uBloom;
+  uniform sampler2D uOpenSky;
   uniform vec3 uSpace;
   out vec4 color;
   // The ring's apparent outline, in shadow radii: where its light ends, and how
@@ -541,14 +602,24 @@ ${bloomEncoding}
     vec4 second = texelFetch(uSecond, pixel, 0);
     vec4 tr = texelFetch(uTransport, pixel, 0);
     vec3 sky = texelFetch(uBackground, pixel, 0).rgb;
+    vec2 uv = (gl_FragCoord.xy * 2.0 - uRes) / uRes.y - uCenter;
+    float radius = uZoom * B_CRIT / sqrt(D * D - B_CRIT * B_CRIT);
+    if (uBirth < OPENING) {
+      // Before the disk exists the sky is whole: plain stars and the galaxy
+      // band with nothing in front of them. Every pixel starts from that sky,
+      // so no outline of the ring to come can show, and moves to the cached
+      // one (which has the disk and its faint haze in front) as matter gathers
+      // at that place.
+      float ringRadius = clamp(length(uv) / radius * B_CRIT - 0.8, R_IN, R_OUT);
+      float gathered = uBirth - arrivalTime(ringRadius, PI - atan(uv.y, uv.x), 0.5);
+      sky = mix(texelFetch(uOpenSky, pixel, 0).rgb, sky, smoothstep(0.0, 2.3, gathered));
+    }
     vec3 diskEmission = emission(first, tr.g * 2.0 - 1.0, tr.r)
       + emission(second, tr.a * 2.0 - 1.0, tr.b);
     vec3 skyLight = sky * sky * 4.0;
     vec3 col = skyLight + diskEmission;
 
-    vec2 uv = (gl_FragCoord.xy * 2.0 - uRes) / uRes.y - uCenter;
     float px = 2.0 / uRes.y;
-    float radius = uZoom * B_CRIT / sqrt(D * D - B_CRIT * B_CRIT);
     float distanceToShadow = length(uv) - radius;
     float outside = smoothstep(-0.5 * px, 0.5 * px, distanceToShadow);
     float distanceFromEdge = max(0.0, distanceToShadow);
@@ -565,8 +636,11 @@ ${bloomEncoding}
     float filteredWidth = sqrt(coreWidth * coreWidth + px * px / 6.0);
     float rim = exp(-pow((distanceToShadow - coreWidth) / filteredWidth, 2.0)) * coreWidth / filteredWidth;
     float aureole = exp(-distanceFromEdge / (radius * 0.055));
-    col += rim * vec3(0.72, 0.86, 1.0) * 3.0
-      + aureole * vec3(0.12, 0.32, 0.80) * 0.85;
+    // The thin ring and its aureole are the inner disk's light bent round the
+    // hole, so in the opening they come on as the inner disk does.
+    float ringOn = uBirth < OPENING ? smoothstep(1.4, 4.0, uBirth) : 1.0;
+    col += (rim * vec3(0.72, 0.86, 1.0) * 3.0
+      + aureole * vec3(0.12, 0.32, 0.80) * 0.85) * ringOn;
     vec2 screen = gl_FragCoord.xy / uRes;
     vec3 glow = decodeGlow(textureLod(uBloom, screen, 0.0).rgb) * 0.30
       + decodeGlow(textureLod(uBloom, screen, 2.0).rgb) * 0.18
@@ -598,6 +672,9 @@ ${bloomEncoding}
     float fadeAtRim = pageFade(0.5 - (edgePoint.y + uCenter.y) * 0.5);
     float fadeHere = pageFade(1.0 - gl_FragCoord.y / uRes.y);
     halo *= pow(fadeAtRim / max(fadeHere, 0.12), 2.2);
+    // In the opening the halo is the last thing to appear: light spreading
+    // into space once the ring has filled out to its edge.
+    if (uBirth < OPENING) halo *= smoothstep(5.3, 6.9, uBirth);
     // Tinted towards the deep red of the disk's rim, so over the blue-black
     // floor it reads as a glow, not as a grey veil.
     glow += body * vec3(1.0, 0.42, 0.16) * 3.2 * halo;

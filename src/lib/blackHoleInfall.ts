@@ -163,7 +163,7 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
     resize(w: number, h: number, x: number, y: number, radius: number) {
       width = w; height = h; cx = x; cy = y; horizon = radius;
     },
-    draw(time: number, stream?: Stream) {
+    draw(time: number, stream?: Stream, gain = 1) {
       vertexCount = 0; indexCount = 0;
       const count = width < 720 ? 65 : stars.length;
       for (let i = 0; i < count; i++) {
@@ -180,7 +180,7 @@ export function createInfallRenderer(canvas: HTMLCanvasElement, gl: WebGL2Render
         const x = cx + Math.cos(head.angle) * head.radius * horizon;
         const y = cy + Math.sin(head.angle) * head.radius * horizon;
         const heat = clamp((5.5 - head.radius) / 4.5);
-        const alpha = star.brightness * clamp(age / 1.4);
+        const alpha = star.brightness * clamp(age / 1.4) * gain;
         const green = ((star.warm ? 215 : 232) * (1 - heat) + 248 * heat) / 255;
         const blue = ((star.warm ? 175 : 255) * (1 - heat) + 205 * heat) / 255;
         if (heat > 0) {

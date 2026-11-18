@@ -8,8 +8,8 @@
  * apparent shadow radii on screen; the wave lives in disk coordinates.
  */
 const TAU = Math.PI * 2;
-/** Scene time of the first event. The scene starts at 18, so it begins soon after arrival. */
-export const FIRST_DISRUPTION = 24;
+/** Scene time of the first event. The scene starts at 18 and opens for 7 seconds; this follows it. */
+export const FIRST_DISRUPTION = 26;
 export const DISRUPTION_INTERVAL = 60;
 
 const START = 12;          // where the star begins, far outside the frame
