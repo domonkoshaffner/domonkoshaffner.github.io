@@ -1,9 +1,12 @@
 ---
-import '@fontsource/michroma/400.css';
-import '@fontsource/ibm-plex-sans/400.css';
-import '@fontsource/ibm-plex-sans/500.css';
-import '@fontsource/ibm-plex-sans/600.css';
+import '../styles/fonts.css';
 import '../styles/global.css';
+// The four font files every page draws its first screen with. Preloaded so
+// they are requested with the stylesheet, not after it: see styles/fonts.css.
+import michroma from '@fontsource/michroma/files/michroma-latin-400-normal.woff2?url';
+import plex400 from '@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2?url';
+import plex500 from '@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-500-normal.woff2?url';
+import plex600 from '@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-600-normal.woff2?url';
 import { profile } from '../data/site';
 
 interface Props {
@@ -21,6 +24,9 @@ const image = new URL('/images/portrait.jpg', Astro.site);
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {[michroma, plex400, plex500, plex600].map((href) => (
+      <link rel="preload" as="font" type="font/woff2" href={href} crossorigin />
+    ))}
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#05070d" />
     <title>{title}</title>
