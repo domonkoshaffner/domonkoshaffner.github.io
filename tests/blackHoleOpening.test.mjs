@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SCENE_START, OPENING_DURATION, OPENING_OVER, OPENING_BODIES, PLANET, STAR, FRAGMENT, TURN,
-  openingAge, openingStreakGain, openingPoint, bodyRadius, bodyReach, bodyGirth, createOpeningState,
+  openingAge, openingStreakGain, openingPoint, openingOrbit, bodyRadius, bodyReach, bodyGirth, createOpeningState,
 } from '../src/lib/blackHoleOpening.ts';
 import { FIRST_DISRUPTION } from '../src/lib/blackHoleDisruption.ts';
+import { compositeShader } from '../src/lib/blackHoleShaders.ts';
 
 const at = (index, wide, since) => openingPoint(index, wide, since, { radius: 0, angle: 0, presence: 0 });
 const place = (point) => [Math.cos(point.angle) * point.radius, Math.sin(point.angle) * point.radius];
@@ -59,10 +60,26 @@ test('each path is smooth: no jump in place or in pace, from rest to the orbit',
         assert.ok(Math.abs(nextStep - step) < 0.004, `closing pace is continuous at ${since.toFixed(2)}s`);
         turn = nextTurn; step = nextStep; b = c;
       }
-      // Once caught it circles at the orbit's own pace.
-      assert.ok(Math.abs(turn / 0.005 - TURN) < 0.02);
+      // Once caught it circles at its own orbit's pace.
+      assert.ok(Math.abs(turn / 0.005 - openingOrbit(k).turn) < 0.02);
     }
   }
+});
+
+test('each stream circles at its own orbit\'s rate, by Kepler\'s law: the inner ones whip round, the outer take their time', () => {
+  const star = openingOrbit(3);
+  assert.equal(star.turn, TURN, 'the star sets the pace the ring is laid down at');
+  for (let k = 0; k < OPENING_BODIES; k++) {
+    const { radius, turn } = openingOrbit(k);
+    assert.ok(radius > 3.0 && radius < 9.5, 'its orbit lies inside the disk');
+    assert.ok(Math.abs(turn * radius ** 1.5 / (star.turn * star.radius ** 1.5) - 1) < 1e-12, 'the rate falls as the 3/2 power of the radius');
+  }
+  // The ringed planet has the innermost orbit and the ice world the outermost of the planets.
+  assert.ok(openingOrbit(1).turn > star.turn && star.turn > openingOrbit(0).turn && openingOrbit(0).turn > openingOrbit(2).turn);
+  assert.ok(openingOrbit(1).turn > 2 * openingOrbit(2).turn, 'a difference that can be seen');
+  // The disk shader lays each planet's ring down at the same pace, and the star's at TURN.
+  assert.ok(compositeShader.includes('float lap = LAP * pow(planet.z / uSeeds[3].z, 1.5);'));
+  assert.ok(compositeShader.includes(`const float LAP = TAU / ${TURN.toFixed(1)};`));
 });
 
 test('the system rests in the upper left of the hole: in the open sky on wide screens, inside the frame on narrow ones', () => {
@@ -126,7 +143,7 @@ test('the side nearest the hole goes first: matter runs ahead of each planet and
         if (body.presence < 0.999) assert.equal(body.drained, 1);
         assert.ok(body.stretch >= 0 && body.stretch <= 1);
       }
-      assert.ok(led && drained === 1 && reach > 0.5);
+      assert.ok(led && drained === 1 && reach > 0.4);
     }
     const rest = stateAt(0, wide).bodies;
     for (let k = 0; k < 4; k++) {

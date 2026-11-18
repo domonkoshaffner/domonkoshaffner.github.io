@@ -24,7 +24,11 @@ export const OPENING_DURATION = 10.5;
 /** What the shader is given once the opening is over: any value past its end. */
 export const OPENING_OVER = 1000;
 
-/** How fast caught matter circles the hole, in radians per second. Mirrors TURN in the disk shader. */
+/**
+ * How fast the star's matter circles the hole once caught, in radians per
+ * second: the pace the ring is laid down at. Mirrors LAP in the disk shader.
+ * Every other body circles at its own rate, by Kepler's law: see orbitTurn.
+ */
 export const TURN = 3.5;
 /** How much a path turns per unit of log distance from its orbit, once it is close in. */
 const PITCH = 0.9;
@@ -66,21 +70,35 @@ const at = (x: number, y: number): [number, number] => [Math.hypot(x, y), Math.a
  * clear of it on a wide screen, in the corner of the frame on a narrow one.
  * The planets go first and leave thin rings at their own orbits; the star,
  * the heaviest, holds out longest and brings almost all of the matter; the
- * rocks that were scattered round it follow it in.
+ * rocks that were scattered round it follow it in, those bound for the widest
+ * (and so slowest) orbits first.
  */
 const BODIES: Body[] = [
   { kind: PLANET, hold: 1.0, fall: 2.2, wide: at(-6.6, -2.2), narrow: at(-2.3, -2.9), orbit: 2.20, reach: 0, pace: 3.4, size: 0.140, look: 0, share: 0.30 },
   { kind: PLANET, hold: 1.3, fall: 2.4, wide: at(-7.1, -0.5), narrow: at(-3.55, -1.0), orbit: 1.55, reach: 0, pace: 3.4, size: 0.175, look: 1, share: 0.34 },
-  { kind: PLANET, hold: 1.6, fall: 2.6, wide: at(-7.7, -2.55), narrow: at(-2.0, -1.9), orbit: 2.50, reach: 0, pace: 4.0, size: 0.105, look: 2, share: 0.26 },
+  { kind: PLANET, hold: 1.5, fall: 2.5, wide: at(-7.7, -2.55), narrow: at(-2.0, -1.9), orbit: 2.50, reach: 0, pace: 3.4, size: 0.105, look: 2, share: 0.26 },
   { kind: STAR, hold: 2.0, fall: 2.4, wide: at(-8.4, -1.5), narrow: at(-3.4, -2.85), orbit: 1.80, reach: 0, pace: 4.0, size: 0.30, look: 0, share: 1 },
-  { kind: FRAGMENT, hold: 4.4, fall: 1.9, wide: at(-9.3, -0.4), narrow: at(-3.0, -0.2), orbit: 2.15, reach: 0.45, pace: 0, size: 0.012, look: 0.9, share: 0 },
-  { kind: FRAGMENT, hold: 4.9, fall: 1.9, wide: at(-10.0, -2.3), narrow: at(-3.9, -2.0), orbit: 2.50, reach: 0.40, pace: 0, size: 0.010, look: 0.7, share: 0 },
-  { kind: FRAGMENT, hold: 5.4, fall: 1.8, wide: at(-6.1, -1.2), narrow: at(-1.6, -3.2), orbit: 1.95, reach: 0.45, pace: 0, size: 0.011, look: 0.8, share: 0 },
-  { kind: FRAGMENT, hold: 5.9, fall: 1.8, wide: at(-9.9, -1.2), narrow: at(-3.9, -3.2), orbit: 2.75, reach: 0.40, pace: 0, size: 0.009, look: 0.6, share: 0 },
-  { kind: FRAGMENT, hold: 6.4, fall: 1.7, wide: at(-8.0, -0.2), narrow: at(-3.0, -0.9), orbit: 2.30, reach: 0.40, pace: 0, size: 0.010, look: 0.75, share: 0 },
-  { kind: FRAGMENT, hold: 6.9, fall: 1.7, wide: at(-9.0, -2.9), narrow: at(-2.7, -3.3), orbit: 2.85, reach: 0.35, pace: 0, size: 0.009, look: 0.6, share: 0 },
+  { kind: FRAGMENT, hold: 3.6, fall: 1.7, wide: at(-9.0, -2.9), narrow: at(-2.7, -3.3), orbit: 2.85, reach: 0.35, pace: 0, size: 0.009, look: 0.6, share: 0 },
+  { kind: FRAGMENT, hold: 4.0, fall: 1.8, wide: at(-9.9, -1.2), narrow: at(-3.9, -3.2), orbit: 2.75, reach: 0.40, pace: 0, size: 0.009, look: 0.6, share: 0 },
+  { kind: FRAGMENT, hold: 4.4, fall: 1.9, wide: at(-10.0, -2.3), narrow: at(-3.9, -2.0), orbit: 2.50, reach: 0.40, pace: 0, size: 0.010, look: 0.7, share: 0 },
+  { kind: FRAGMENT, hold: 4.9, fall: 1.7, wide: at(-8.0, -0.2), narrow: at(-3.0, -0.9), orbit: 2.30, reach: 0.40, pace: 0, size: 0.010, look: 0.75, share: 0 },
+  { kind: FRAGMENT, hold: 5.4, fall: 1.9, wide: at(-9.3, -0.4), narrow: at(-3.0, -0.2), orbit: 2.15, reach: 0.45, pace: 0, size: 0.012, look: 0.9, share: 0 },
+  { kind: FRAGMENT, hold: 5.9, fall: 1.8, wide: at(-6.1, -1.2), narrow: at(-1.6, -3.2), orbit: 1.95, reach: 0.45, pace: 0, size: 0.011, look: 0.8, share: 0 },
 ];
 export const OPENING_BODIES = BODIES.length;
+
+/** The radius of a body's orbit in the disk itself, in Schwarzschild radii, from its apparent radius in this face-on view. */
+const diskRadius = (body: Body) => 2.598 * body.orbit - 0.8;
+/**
+ * How fast each body's matter circles once caught. Kepler's law: the rate
+ * falls as the 3/2 power of the orbit's radius, so matter on the innermost
+ * orbit whips round and matter on the outermost takes its time. Scaled so the
+ * star's rate is TURN.
+ */
+const STAR_ORBIT = diskRadius(BODIES.find((body) => body.kind === STAR)!);
+const orbitTurn = BODIES.map((body) => TURN * (STAR_ORBIT / diskRadius(body)) ** 1.5);
+/** A body's orbit, for whoever needs it: its radius in the disk and the rate its matter circles at. */
+export const openingOrbit = (index: number) => ({ radius: diskRadius(BODIES[index]), turn: orbitTurn[index] });
 
 const clamp = (v: number) => Math.max(0, Math.min(1, v));
 const smooth = (from: number, to: number, value: number) => {
@@ -95,11 +113,11 @@ const rest = (body: Body, wide: boolean) => (wide ? body.wide : body.narrow);
  * it circles at that speed while closing in on the orbit, so its path and its
  * pace are both smooth all the way. Found once for each layout and body.
  */
-const caught = [true, false].map((wide) => BODIES.map((body) => {
+const caught = [true, false].map((wide) => BODIES.map((body, index) => {
   const start = rest(body, wide)[0];
   // Turning speed at the end of the fall, less the orbit's own: zero where the two match.
   const mismatch = (radius: number) =>
-    (start ** 2 - radius ** 2) * (GATHER / 2) * PITCH / (body.fall * radius * (radius - body.orbit)) - TURN;
+    (start ** 2 - radius ** 2) * (GATHER / 2) * PITCH / (body.fall * radius * (radius - body.orbit)) - orbitTurn[index];
   let low = body.orbit + 1e-4, high = start - 1e-4;
   for (let i = 0; i < 60; i++) {
     const mid = (low + high) / 2;
@@ -120,7 +138,7 @@ const turned = (along: number) => PITCH * (along - 1 + Math.exp(-along));
 function progress(index: number, wide: boolean, since: number) {
   const body = BODIES[index], end = caught[wide ? 0 : 1][index];
   if (since <= 0) return 0;
-  if (since >= body.fall) return end.progress + TURN / PITCH * (since - body.fall);
+  if (since >= body.fall) return end.progress + orbitTurn[index] / PITCH * (since - body.fall);
   const start = rest(body, wide)[0];
   const radius = Math.sqrt(start ** 2 - (start ** 2 - end.radius ** 2) * (since / body.fall) ** GATHER);
   return -Math.log((radius - body.orbit) / (start - body.orbit));
@@ -257,14 +275,14 @@ export function createOpeningState() {
           let low = 0, high = 3;
           for (let i = 0; i < 40; i++) {
             const mid = (low + high) / 2;
-            if (turned(end.progress + TURN / PITCH * mid) - turned(end.progress) < LIGHT_FROM) low = mid; else high = mid;
+            if (turned(end.progress + orbitTurn[k] / PITCH * mid) - turned(end.progress) < LIGHT_FROM) low = mid; else high = mid;
           }
           seeds[k * 4] = body.hold + body.fall + high;
           // The disk's own angle runs half a turn from the screen's.
           const screen = rest(body, wide)[1] + turned(end.progress) + LIGHT_FROM;
           seeds[k * 4 + 1] = ((screen + Math.PI) % TAU + TAU) % TAU;
           // Apparent radius on screen to radius in the disk, for this face-on view.
-          seeds[k * 4 + 2] = 2.598 * body.orbit - 0.8;
+          seeds[k * 4 + 2] = diskRadius(body);
           seeds[k * 4 + 3] = body.share;
         }
       }

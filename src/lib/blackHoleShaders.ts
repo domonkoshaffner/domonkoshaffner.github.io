@@ -404,7 +404,9 @@ const diskLight = `
   // For each of the three planets and then the star: when its matter starts to
   // settle, at which angle of the disk, at which radius, and how much it brings.
   uniform vec4 uSeeds[4];
-  // How long caught matter takes to circle the hole once. Mirrors TURN in blackHoleOpening.ts.
+  // How long the star's matter takes to circle the hole once. Mirrors TURN in
+  // blackHoleOpening.ts. A planet's takes longer or shorter by Kepler's law,
+  // as there: the period goes as the 3/2 power of the orbit's radius.
   const float LAP = TAU / 3.5;
   // How long after a stream starts to settle its matter reaches a place a given
   // turn further round, in laps. The matter runs on ahead round the orbit, so
@@ -432,13 +434,14 @@ const diskLight = `
     return star.x + lapped + spread + 0.3 * (1.0 - density);
   }
   // Before the star, each planet leaves a thin ring of matter at its own orbit,
-  // drawn round the hole in the same way.
+  // drawn round the hole in the same way, at the pace of its own orbit.
   float planetRings(float r, float phi) {
     float rings = 0.0;
     for (int k = 0; k < 3; k++) {
       vec4 planet = uSeeds[k];
       float band = (r - planet.z) / 0.5;
-      rings += planet.w * exp(-band * band) * smoothstep(0.0, 0.9, uBirth - planet.x - sweep(phi - planet.y) * LAP);
+      float lap = LAP * pow(planet.z / uSeeds[3].z, 1.5);
+      rings += planet.w * exp(-band * band) * smoothstep(0.0, 0.9, uBirth - planet.x - sweep(phi - planet.y) * lap);
     }
     return rings;
   }
