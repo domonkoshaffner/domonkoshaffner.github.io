@@ -1,4 +1,5 @@
 import { DISK_INNER, INNER_TURN } from './blackHoleDisk.ts';
+import { DIMMING_REACH, STAR_DIMMING } from './blackHoleLensing.ts';
 
 /** Stationary light paths, a seamless plasma atlas, and a cheap animated composite. */
 export const vertexShader = `#version 300 es
@@ -173,6 +174,19 @@ ${common}
   const float R_BOUND = 13.0;
 
 ${skyField}
+  // How bright a background star is where its light arrives with this impact
+  // parameter, against its true brightness. Bending the light folds the whole
+  // sky into a narrow band round the shadow, and a star's image there is many
+  // times smaller, so the star is that many times fainter: close in, the stars
+  // sink into an even wash. Worked out from the light paths in
+  // blackHoleLensing.ts. A star field looked up one pixel at a time cannot show
+  // this by itself: a pixel either lands on a star or misses it.
+  const float STAR_DIMMING[${STAR_DIMMING.length}] = float[${STAR_DIMMING.length}](${STAR_DIMMING.map((v) => v.toFixed(4)).join(', ')});
+  float starDimming(float impact) {
+    float at = clamp((impact - B_CRIT) / (${DIMMING_REACH.toFixed(1)} - B_CRIT), 0.0, 1.0) * ${(STAR_DIMMING.length - 1).toFixed(1)};
+    int i = int(floor(at));
+    return mix(STAR_DIMMING[i], STAR_DIMMING[min(i + 1, ${STAR_DIMMING.length - 1})], fract(at));
+  }
   vec4 hitCoordinates(vec3 p) {
     return vec4(pack16(length(p.xz) / R_OUT), pack16((atan(p.z, p.x) + PI) / TAU));
   }
@@ -207,6 +221,8 @@ ${skyField}
     float shadowRadius = uZoom * B_CRIT / sqrt(D * D - B_CRIT * B_CRIT);
     float skyFalloff = max(length(uv) / shadowRadius - 3.8, 0.0) / 3.2;
     float nearField = pow(exp(-skyFalloff * skyFalloff), 2.2);
+    // Stars seen close to the hole are fainter by what lensing does to them.
+    float starlight = nearField * starDimming(impact);
     // Beyond the integrated region the pull is weak, not zero. Bending the
     // sight line by the same amount the integration would (a chord through the
     // bounding sphere) keeps the galaxy continuous across that boundary.
@@ -227,7 +243,9 @@ ${skyField}
       float soft = 2.0 / reach * sqrt(max(1.0 - reach * reach / (R_BOUND * R_BOUND), 0.0))
         * smoothstep(3.0, R_OUT, impact);
       vec3 softDir = rd * cos(soft) + cross(normalize(cross(ro, rd)), rd) * sin(soft);
-      vec3 bare = (stars(rd) * nearField + galaxy(softDir, fw, rt, up, 1.0)) * edge;
+      // The stars keep their places here, but are no brighter than the bent
+      // light leaves them: the sky is faint close to a hole with or without a disk.
+      vec3 bare = (stars(rd) * starlight + galaxy(softDir, fw, rt, up, 1.0)) * edge;
       background = vec4(sqrt(clamp(bare * 0.25, 0.0, 1.0)), 1.0);
       return;
     }
@@ -289,7 +307,7 @@ ${skyField}
     vec3 col = glow * vec3(1.0, 0.42, 0.12) * 0.07;
     if (!captured) {
       vec3 dir = normalize(v);
-      col += (1.0 - opacity) * (stars(dir) * nearField
+      col += (1.0 - opacity) * (stars(dir) * starlight
         + galaxy(dir, fw, rt, up, smoothstep(0.80, 0.97, dot(dir, rd))));
     }
     col *= edge;
