@@ -1,3 +1,5 @@
+import { angularVelocity, angularGradient } from './blackHoleDisk.ts';
+
 /** Sparse, deterministic heating events carried by the existing plasma flow. */
 const TAU = Math.PI * 2;
 const FIRST_BIRTH = 17; // The scene starts at 18, with the first knot already beginning to emerge.
@@ -11,8 +13,6 @@ const smooth = (from: number, to: number, value: number) => {
   const x = Math.max(0, Math.min(1, (value - from) / (to - from)));
   return x * x * (3 - 2 * x);
 };
-const angularVelocity = (r: number) => 0.045 + 0.32 * (2.6 / r) ** 1.35;
-const angularGradient = (r: number) => -0.32 * 1.35 * (2.6 / r) ** 1.35 / r;
 
 export function createHotspotState() {
   // Each event: radius, angle, radial shear, strength; widths: radial, angular.

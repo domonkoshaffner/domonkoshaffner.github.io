@@ -7,6 +7,8 @@
  * event exactly and Play resumes the same one. Radii of the stream are in
  * apparent shadow radii on screen; the wave lives in disk coordinates.
  */
+import { angularVelocity } from './blackHoleDisk.ts';
+
 const TAU = Math.PI * 2;
 /** Scene time of the first event. The scene starts at 18 and opens for 10 seconds; this follows it. */
 export const FIRST_DISRUPTION = 30;
@@ -33,8 +35,6 @@ const smooth = (from: number, to: number, value: number) => {
   const x = clamp((value - from) / (to - from));
   return x * x * (3 - 2 * x);
 };
-/** Same orbital-speed profile as the disk in the shader and the hot spots. */
-const angularVelocity = (r: number) => 0.045 + 0.32 * (2.6 / r) ** 1.35;
 
 /** Where the material at a given radius² sits on the stream's path. */
 export function streamPoint(edgeAngle: number, squared: number) {

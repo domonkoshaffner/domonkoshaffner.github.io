@@ -1,3 +1,5 @@
+import { DISK_INNER, INNER_TURN } from './blackHoleDisk.ts';
+
 /** Stationary light paths, a seamless plasma atlas, and a cheap animated composite. */
 export const vertexShader = `#version 300 es
   void main() {
@@ -14,7 +16,7 @@ const common = `
   // Lengths are in Schwarzschild radii. The disk ends at the innermost stable
   // circular orbit, three of them out: inside it nothing can orbit, matter
   // plunges, and there is next to no light.
-  const float R_IN = 3.0;
+  const float R_IN = ${DISK_INNER.toFixed(1)};
   const float R_OUT = 9.5;
   const float B_CRIT = 2.598;
   const float D = 15.0;
@@ -482,7 +484,8 @@ const diskLight = `
     float r = unpack16(packedHit.rg) * R_OUT;
     float phi = unpack16(packedHit.ba) * TAU - PI;
     float flowRadius = max(r, R_IN);
-    float angularVelocity = 0.045 + 0.32 * pow(2.6 / flowRadius, 1.35);
+    // Kepler's law, exact for circular orbits here: see blackHoleDisk.ts.
+    float angularVelocity = ${INNER_TURN.toFixed(3)} * pow(R_IN / flowRadius, 1.5);
     // Two staggered flows renew only while their contribution is zero. Their
     // smooth handover lets strands form and dissolve without a visible reset.
     float phaseA = fract((uTime - 18.0) / 24.0);
